@@ -42,7 +42,7 @@ print("Connected! IP address:", wifi.radio.ipv4_address)
 # -------------------------------
 pool = socketpool.SocketPool(wifi.radio)
 udp = pool.socket(pool.AF_INET, pool.SOCK_DGRAM)
-UDP_IP = "10.164.2.142"  # ip address of hotspot
+UDP_IP = "10.164.2.14"  # ip address of hotspot 
 UDP_PORT = 5000 #both sender and receiver have to go to the same port
 
 while True:

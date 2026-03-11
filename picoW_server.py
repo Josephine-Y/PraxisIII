@@ -13,18 +13,20 @@ UDP_PORT = 5000
 udp_server.bind((UDP_IP, UDP_PORT))
 print(f"Server listening on {UDP_IP}:{UDP_PORT}")
 
+buffer = bytearray(1024)  # ✅ pre-allocate buffer
+
 try:
     while True:
         print("Waiting for data...")
         try:
-            data, client_address = udp_server.recvfrom(1024)
+            size, client_address = udp_server.recvfrom_into(buffer)  # ✅ use recvfrom_into
+            data = buffer[:size]
             print(f"Received message: {data.decode()} from {client_address}")
             response = "Message received!"
             udp_server.sendto(response.encode(), client_address)
             print(f"Sent response to {client_address}")
         except Exception as e:
             print(f"Error: {e}")
-            # Don't exit — keep the server running
 finally:
-    udp_server.close()  # ← correct variable name
+    udp_server.close()
     print("Connection closed")

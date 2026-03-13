@@ -1,7 +1,11 @@
+# picoW_server.py
+
+import os
 import wifi
 import socketpool
 
-wifi.radio.connect("PraxisIII", "MiceAreNotRats")
+
+wifi.radio.connect(os.getenv('CIRCUITPY_WIFI_SSID'), os.getenv('CIRCUITPY_WIFI_PASSWORD'))
 print("Connected to Wi-Fi")
 print("Server IP Address:", wifi.radio.ipv4_address)
 
@@ -13,13 +17,13 @@ UDP_PORT = 5000
 udp_server.bind((UDP_IP, UDP_PORT))
 print(f"Server listening on {UDP_IP}:{UDP_PORT}")
 
-buffer = bytearray(1024)  # ✅ pre-allocate buffer
+buffer = bytearray(1024)
 
 try:
     while True:
         print("Waiting for data...")
         try:
-            size, client_address = udp_server.recvfrom_into(buffer)  # ✅ use recvfrom_into
+            size, client_address = udp_server.recvfrom_into(buffer)
             data = buffer[:size]
             print(f"Received message: {data.decode()} from {client_address}")
             response = "Message received!"

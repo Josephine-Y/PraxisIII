@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, render_template
 from flask_cors import CORS
 import psycopg2
 import psycopg2.extras
@@ -20,6 +20,10 @@ FEEDS = ["picow14", "picow141", "picow142", "picow42"]
 # Database Connection
 def get_db():
     return psycopg2.connect(os.getenv("SUPABASE_DB_URL"))
+
+@app.route("/")
+def index():
+    return render_template("webpage.html")
 
 @app.route("/data", methods=["POST"])
 def receive_data():

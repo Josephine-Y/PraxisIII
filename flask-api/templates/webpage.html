@@ -1,0 +1,46 @@
+<html>
+    <head>
+        <title>Sensor Node Data</title>
+        <!-- <meta http-equiv="refresh" content="2"> -->
+        <style>
+        body { font-family: Arial; background:#111; color:white; }
+        table { border-collapse: collapse; width:50%; }
+        th, td { border:1px solid white; padding:8px; text-align:center; }
+        th { background:#333; }
+        </style>
+    </head>
+
+    <body>
+        <h1>Sensor Node Dashboard</h1>
+
+        <table>
+            <tr><th>Client IP</th><th>Latest Temperature</th><th>Timestamp</th></tr>
+            <tbody id="data-body"></tbody>
+        </table>
+        
+        <script>
+            // const FLASK_URL = "http://localhost:8080";
+            const FLASK_URL = "https://mia-0w2l.onrender.com";
+
+            async function fetchData() {
+                try {
+                    const res = await fetch('${FLASK_URL}/latest');
+                    const json = await res.json();
+                    const tbody = document.getElementById('data-body');
+                    tbody.innerHTML = '';
+                    for (const [ip, temp, timestamp] of Object.entries(json)) {
+                        const temp = temp ? `${temp.value.toFixed(2)}°C` : '--';
+                        const timestamp = timestamp ? new Date(timestamp).toLocaleString() : '--';
+                        tbody.innerHTML += `<tr><td>${ip}</td><td>${temp}</td><td>${timestamp}</td></tr>`;
+                    }
+                } catch (e) {
+                    console.log('Fetch error:', e);
+                }
+            }
+            // fetches data every second
+            setInterval(fetchData, 1000); 
+            fetchData();
+        </script>
+
+    </body>
+    </html>

@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: flask-sensor-api
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app
+    envVars:
+      - key: API_KEY
+        sync: false
+      - key: SUPABASE_DB_URL
+        sync: false

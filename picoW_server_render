@@ -1,0 +1,164 @@
+# picoW_server.py
+# PicoW --> Flask --> Supabase --> 
+
+import os
+import time
+import board
+import analogio
+import math
+import wifi
+import socketpool
+import ipaddress
+import ssl
+import adafruit_requests
+import adafruit_ntp
+import rtc
+
+# ---------------------------------------------------
+# Thermistor Functions
+def get_temp(adc_value):
+    voltage = adc_value / 65535 * 3.3
+    resistance = series_resistor * (voltage / (3.3 - voltage))
+    temp_k = 1 / (1/(nominal_temp+273.15) + (1/beta)*math.log(resistance/nominal_resistance))
+    return temp_k - 273.15
+
+def get_temp_avg(samples=5):
+    total = 0
+    for _ in range(samples):
+        total += get_temp(adc.value)
+    return total / samples
+# ---------------------------------------------------
+# Flask API Functions
+def reconnect():
+    global pool, requests, udp_server
+    print("Reconnecting WiFi...")
+    try:
+        try:
+            udp_server.close()
+        except:
+            pass
+
+        wifi.radio.connect(os.getenv('CIRCUITPY_WIFI_SSID'), os.getenv('CIRCUITPY_WIFI_PASSWORD'))
+        print("WiFi reconnected")
+        
+        pool = socketpool.SocketPool(wifi.radio)
+        udp_server = pool.socket(pool.AF_INET, pool.SOCK_DGRAM)
+        udp_server.bind((UDP_IP, UDP_PORT))
+        udp_server.setblocking(False)
+        requests = adafruit_requests.Session(pool, ssl_context)
+        print("Session recreated")
+
+    except Exception as e:
+        print(f"Reconnect failed: {e}")
+
+def post_to_flask(node, temp_value, retries=3):
+    for attempt in range(retries):
+        try:
+            unix_time = time.time() + EPOCH_OFFSET
+            print("Posting to Flask...")
+            response = requests.post(
+                f"{FLASK_URL}/data",
+                json={"node": node, "temp": temp_value, "time": unix_time},
+                headers={"X-Api-Key": os.getenv("FLASK_API_KEY")},
+                timeout=10)
+            print(f"Posted to Flask: {node} = {temp_value}°C, {unix_time}")
+            response.close()
+            return
+
+        except Exception as e:
+            print(f"Flask error (attempt {attempt+1}/{retries}): {e}")
+            time.sleep(2 * (attempt + 1))
+
+    # all retries failed — full reconnect
+    reconnect()
+# ---------------------------------------------------
+# IoT Functions
+def send_self_data(last_send_time):
+    current_time = time.time()
+
+    if current_time - last_send_time >= 1:
+        # 1 second has passed --> send data
+        temp_value = "{:.2f}".format(get_temp_avg(5))
+        post_to_flask("picow14", temp_value)
+        last_send_time = current_time
+    
+    return last_send_time
+
+def receive_data(buffer):
+    try:
+        size, client_address = udp_server.recvfrom_into(buffer)
+        data = buffer[:size]
+        print(f"Received message: {data.decode()} from {client_address}")
+        node = f"picow{(client_address[0])[10:]}"
+        post_queue.append((node, data.decode()))
+        # post_to_flask(client_address[0], data.decode())
+    except OSError as e:
+        if e.errno == 11:
+            pass
+        else:
+            print(f"Receive Data Error: {e}")
+# ---------------------------------------------------
+# Thermistor Setup
+adc = analogio.AnalogIn(board.GP26)
+series_resistor = 10000
+nominal_resistance = 10000
+nominal_temp = 25
+beta = 3950
+# ---------------------------------------------------
+# Wifi Setup
+wifi.radio.connect(os.getenv('CIRCUITPY_WIFI_SSID'), os.getenv('CIRCUITPY_WIFI_PASSWORD'))
+print("Connected to Wi-Fi")
+# ---------------------------------------------------
+# Server Setup
+pool = socketpool.SocketPool(wifi.radio)
+udp_server = pool.socket(pool.AF_INET, pool.SOCK_DGRAM)
+
+# sync Pico's Real Time Clock to Network Time Protocol on the internet
+try:
+    ntp = adafruit_ntp.NTP(pool, tz_offset=0)
+    rtc.RTC().datetime = ntp.datetime
+    EPOCH_OFFSET = 0
+except Exception as e:
+    EPOCH_OFFSET = 946684800 # seconds from 2000-01-01 (Pico) to 1970-01-01 (Unix)
+
+UDP_IP = str(wifi.radio.ipv4_address)
+UDP_PORT = 5000
+udp_server.bind((UDP_IP, UDP_PORT))
+udp_server.setblocking(False)
+print(f"Server listening on {UDP_IP}:{UDP_PORT}") # listening for UDP packets from underground nodes
+# ---------------------------------------------------
+# Flask Setup
+FLASK_URL = os.getenv('FLASK_URL') # URL of Flask API (hosted on Render)
+# requests = adafruit_requests.Session(pool, ssl.create_default_context()) # for making HTTP requests to Flask API (send data to Flask)
+ssl_context = ssl.create_default_context()
+with open("cacert.pem", "r") as f:
+    ssl_context.load_verify_locations(cadata=f.read())
+requests = adafruit_requests.Session(pool, ssl_context) # disable SSL to bypass certificate to Render
+# ---------------------------------------------------
+# Main Program
+
+buffer = bytearray(1024)
+last_send_time = 0
+post_queue = []
+
+try:
+    print("Waiting for data...")
+    while True:
+        
+       # try:
+        last_send_time = send_self_data(last_send_time)
+
+        receive_data(buffer)
+        
+        if post_queue:
+            node, temp = post_queue.pop(0)
+            post_to_flask(node, temp)
+
+        # serve(buffer)
+        time.sleep(0.05)
+        #except Exception as e:
+           # print(f"Error: {e}")
+finally:
+    udp_server.close()
+    # web_socket.close()
+    print("Connection closed")

@@ -28,10 +28,10 @@
                     const json = await res.json();
                     const tbody = document.getElementById('data-body');
                     tbody.innerHTML = '';
-                    for (const [ip, temp, timestamp] of Object.entries(json)) {
-                        const temp = temp ? `${temp.value.toFixed(2)}°C` : '--';
-                        const timestamp = timestamp ? new Date(timestamp).toLocaleTimeString("en-US", {timeZone: "America/Toronto"}) : '--';
-                        tbody.innerHTML += `<tr><td>${ip}</td><td>${temp}</td><td>${timestamp}</td></tr>`;
+                    for (const [node, values] of Object.entries(json)) {
+                        const temp = values.temperature !== null ? `${values.temperature.toFixed(2)}°C` : '--';
+                        const timestamp = values.timestamp ? new Date(values.timestamp).toLocaleTimeString("en-US", {timeZone: "America/Toronto"}) : '--';
+                        tbody.innerHTML += `<tr><td>${node}</td><td>${temp}</td><td>${timestamp}</td></tr>`;
                     }
                 } catch (e) {
                     console.log('Fetch error:', e);

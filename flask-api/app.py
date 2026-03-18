@@ -2,12 +2,12 @@ from flask import Flask, request, jsonify, render_template
 from flask_cors import CORS
 import psycopg2
 import psycopg2.extras
-import time 
+import time
+from datetime import datetime, timezone
 import os
 from dotenv import load_dotenv
-from pathlib import Path
 
-load_dotenv(dotenv_path = Path('..')/'.env')
+load_dotenv()
 
 app = Flask(__name__)
 CORS(app)
@@ -27,13 +27,16 @@ def index():
 
 @app.route("/data", methods=["POST"])
 def receive_data():
-    if request.headers.get("API_KEY") != API_KEY:
+    if request.headers.get("X-Api-Key") != API_KEY:
         return jsonify({"error": "Unauthorized"}), 401
     
     data = request.json
     node = data.get("node")
     temp = data.get("temp")
-    timestamp = data.get("time")
+    unix_time = data.get("time")
+
+    # convert unix timestamp to datetime for Supabase
+    timestamp = datetime.fromtimestamp(unix_time, tz=timezone.utc)
 
     if node not in FEEDS:
         return jsonify({"error": "Unknown node"}), 400
@@ -42,7 +45,7 @@ def receive_data():
         connection = get_db()
         cursor = connection.cursor()
         cursor.execute(
-            "INSERT INTO data (node, temp, timestamp) VALUES (%s, %s, %s)",
+            "INSERT INTO data (node, temperature, timestamp) VALUES (%s, %s, %s)",
             (node, temp, timestamp)
         )
         connection.commit()
@@ -52,8 +55,8 @@ def receive_data():
         return jsonify({"status": "ok"})
     
     except Exception as e:
-        print(f"Database error: {e}")
-        return jsonify({"error": "Database Error"}), 500
+        print(f"Receive Data Error: {e}")
+        return jsonify({"error": "Receive Data Error"}), 500
 
 @app.route("/latest", methods=["GET"])
 def get_latest_data():
@@ -61,7 +64,7 @@ def get_latest_data():
         connection = get_db()
         cursor = connection.cursor()
         cursor.execute("""
-            SELECT node, temp, timestamp
+            SELECT node, temperature, timestamp
             FROM data
             WHERE (node, timestamp) IN (
                 SELECT node, MAX(timestamp)
@@ -73,9 +76,9 @@ def get_latest_data():
         cursor.close()
         connection.close()
 
-        latest_data = {node: {"temp": None, "timestamp": None} for node in FEEDS}
+        latest_data = {node: {"temperature": None, "timestamp": None} for node in FEEDS}
         for row in rows:
-            latest_data[row[0]] = {"temp": row[1], "timestamp": row[2]}
+            latest_data[row[0]] = {"temperature": row[1], "timestamp": row[2]}
         return jsonify(latest_data)
     
     except Exception as e:

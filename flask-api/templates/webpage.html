@@ -24,13 +24,13 @@
 
             async function fetchData() {
                 try {
-                    const res = await fetch('${FLASK_URL}/latest');
+                    const res = await fetch('/latest');
                     const json = await res.json();
                     const tbody = document.getElementById('data-body');
                     tbody.innerHTML = '';
                     for (const [ip, temp, timestamp] of Object.entries(json)) {
                         const temp = temp ? `${temp.value.toFixed(2)}°C` : '--';
-                        const timestamp = timestamp ? new Date(timestamp).toLocaleString() : '--';
+                        const timestamp = timestamp ? new Date(timestamp).toLocaleTimeString("en-US", {timeZone: "America/Toronto"}) : '--';
                         tbody.innerHTML += `<tr><td>${ip}</td><td>${temp}</td><td>${timestamp}</td></tr>`;
                     }
                 } catch (e) {

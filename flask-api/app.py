@@ -17,6 +17,8 @@ API_KEY = os.getenv("API_KEY")
 # Initialize feeds
 FEEDS = ["picow14", "picow141", "picow142", "picow42"]
 
+latest_cache = {node: {"temperature": None, "timestamp": None} for node in FEEDS}
+
 # Database Connection
 def get_db():
     return psycopg2.connect(os.getenv("SUPABASE_DB_URL"))
@@ -42,6 +44,8 @@ def receive_data():
         return jsonify({"error": "Unknown node"}), 400
     
     try:
+        latest_cache[node] = {"temperature": temp, "timestamp": str(timestamp)}
+
         connection = get_db()
         cursor = connection.cursor()
         cursor.execute(
@@ -60,30 +64,34 @@ def receive_data():
 
 @app.route("/latest", methods=["GET"])
 def get_latest_data():
-    try:
-        connection = get_db()
-        cursor = connection.cursor()
-        cursor.execute("""
-            SELECT node, temperature, timestamp
-            FROM data
-            WHERE (node, timestamp) IN (
-                SELECT node, MAX(timestamp)
-                FROM data
-                GROUP BY node
-            )
-        """)
-        rows = cursor.fetchall()
-        cursor.close()
-        connection.close()
+    return jsonify(latest_cache)
 
-        latest_data = {node: {"temperature": None, "timestamp": None} for node in FEEDS}
-        for row in rows:
-            latest_data[row[0]] = {"temperature": row[1], "timestamp": row[2]}
-        return jsonify(latest_data)
+# @app.route("/latest", methods=["GET"])
+# def get_latest_data():
+#     try:
+#         connection = get_db()
+#         cursor = connection.cursor()
+#         cursor.execute("""
+#             SELECT node, temperature, timestamp
+#             FROM data
+#             WHERE (node, timestamp) IN (
+#                 SELECT node, MAX(timestamp)
+#                 FROM data
+#                 GROUP BY node
+#             )
+#         """)
+#         rows = cursor.fetchall()
+#         cursor.close()
+#         connection.close()
+
+#         latest_data = {node: {"temperature": None, "timestamp": None} for node in FEEDS}
+#         for row in rows:
+#             latest_data[row[0]] = {"temperature": row[1], "timestamp": row[2]}
+#         return jsonify(latest_data)
     
-    except Exception as e:
-        print(f"Database error: {e}")
-        return jsonify({"error": "Database Error"}), 500
+#     except Exception as e:
+#         print(f"Database error: {e}")
+#         return jsonify({"error": "Database Error"}), 500
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8080))

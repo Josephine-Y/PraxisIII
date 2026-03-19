@@ -13,5 +13,5 @@ To make your own sensor network, follow the instructions below:
    
       a. Hold down the BOOTSEL button and plug in the Raspberry Pi Pico W to your laptop using a micro-USB to USB-A or USB-C cable. File Explorer should pop up,
    
-      b. Add the adafruit-circuitpython-raspberry_pi_pico_w-en_US-10.0.3.uf2. The name of the folder should change to CIRCUITPYTHON.
+      b. Add adafruit-circuitpython-raspberry_pi_pico_w-en_US-10.0.3.uf2 to the Raspberry Pi Pico W's folder (download the .uf2 file from https://circuitpython.org/board/raspberry_pi_pico_w/). The name of the folder/drive connected to the Raspberry Pi Pico W should change to CIRCUITPYTHON.
    

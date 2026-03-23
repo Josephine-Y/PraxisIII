@@ -11,6 +11,7 @@ import analogio
 import math
 import wifi
 import socketpool
+import ipaddress
 import ssl
 import adafruit_ntp
 import rtc
@@ -73,12 +74,17 @@ nominal_temp = 25
 beta = 3950
 # ---------------------------------------------------
 # Wifi Setup
+# wifi.radio.set_ipv4_address(ipv4=ipaddress.IPv4Address("10.164.2.14"), netmask=ipaddress.IPv4Address("255.255.255.0"), gateway=ipaddress.IPv4Address("10.80.223.222"))
 wifi.radio.connect(os.getenv('CIRCUITPY_WIFI_SSID'), os.getenv('CIRCUITPY_WIFI_PASSWORD'))
+# wifi.radio.ipv4_dns = ipaddress.IPv4Address("8.8.8.8") # use Google's DNS
 print("Connected to Wi-Fi")
 # ---------------------------------------------------
 # Server Setup
-pool = socketpool.SocketPool(wifi.radio)
-udp_server = pool.socket(pool.AF_INET, pool.SOCK_DGRAM)
+try:
+    pool = socketpool.SocketPool(wifi.radio)
+    udp_server = pool.socket(pool.AF_INET, pool.SOCK_DGRAM)
+except Exception as e:
+    print(f"Socket Error: {e}")
 
 # sync Pico's Real Time Clock to Network Time Protocol on the internet
 try:
@@ -86,6 +92,7 @@ try:
     rtc.RTC().datetime = ntp.datetime
     EPOCH_OFFSET = 0
 except Exception as e:
+    print(f"Clock Error: {e}")
     EPOCH_OFFSET = 946684800 # seconds from 2000-01-01 (Pico) to 1970-01-01 (Unix)
 
 UDP_IP = str(wifi.radio.ipv4_address)
@@ -100,13 +107,17 @@ mqtt_client = MQTT.MQTT(
     port=8883, # TSL port
     username=os.getenv('MQTT_USERNAME'),
     password=os.getenv('MQTT_PASSWORD'),
-    ssl=True,
+    socket_pool=pool,
+    is_ssl=True,
     ssl_context=ssl.create_default_context()
 )
 
-mqtt_client.connect()
+try:
+    mqtt_client.connect()
+except Exception as e:
+    print(f"MQTT Connection Error: {e}")
 # ---------------------------------------------------
-
+    
 buffer = bytearray(1024)
 last_send_time = 0
 
@@ -126,4 +137,5 @@ try:
            # print(f"Error: {e}")
 finally:
     udp_server.close()
+    mqtt_client.disconnect()
     print("Connection closed")

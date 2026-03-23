@@ -78,7 +78,8 @@ def save_to_db(node, temp, unix_time):
     
     except Exception as e:
         print(f"Receive Data Error: {e}")
-    
+
+# MQTT Callback Methods 
 def on_message(client, userdata, message):
     topic = message.topic # nodes/{node}/jsonify(data)
     node = topic.split("/")[1] # {node}
@@ -87,14 +88,20 @@ def on_message(client, userdata, message):
     unix_time = data["timestamp"]
     save_to_db(node, temp, unix_time)
 
-def start_mqtt():
-    client = MQTT.Client()
-    client.on_message = on_message
-    client.username_pw_set(os.getenv("MQTT_USERNAME"), os.getenv("MQTT_PASSWORD"))
-    client.tls_set() # SSL/TLS encryption
-    client.connect("339f0d63410548358f66c3cb882ec424.s1.eu.hivemq.cloud", 8883)
+def on_connect(client, userdata, flags, rc):
     client.subscribe("nodes/+/data")
-    client.loop_forever()
+
+def start_mqtt():
+    try:
+        client = MQTT.Client()
+        client.on_connect = on_connect
+        client.on_message = on_message
+        client.username_pw_set(os.getenv("MQTT_USERNAME"), os.getenv("MQTT_PASSWORD"))
+        client.tls_set() # SSL/TLS encryption
+        client.connect("339f0d63410548358f66c3cb882ec424.s1.eu.hivemq.cloud", 8883)
+        client.loop_forever()
+    except Exception as e:
+        print(f"MQTT Client Error: {e}")
 
 # Start MQTT client in a separate thread
 threading.Thread(target=start_mqtt, daemon=True).start()

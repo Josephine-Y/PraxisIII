@@ -86,7 +86,7 @@ def mqtt_config():
     return jsonify({
         "username": os.getenv("MQTT_USERNAME"),
         "password": os.getenv("MQTT_PASSWORD"),
-        "broker": "wss://339f0d63410548358f66c3cb882ec424.s1.eu.hivemq.cloud:8884"
+        "broker": "wss://339f0d63410548358f66c3cb882ec424.s1.eu.hivemq.cloud:8884/mqtt"
     })
 
 def on_message(client, userdata, message):

@@ -79,7 +79,16 @@ def save_to_db(node, temp, unix_time):
     except Exception as e:
         print(f"Receive Data Error: {e}")
 
-# MQTT Callback Methods 
+# MQTT Callback Methods
+# app.py
+@app.route("/mqtt-config")
+def mqtt_config():
+    return jsonify({
+        "username": os.getenv("MQTT_USERNAME"),
+        "password": os.getenv("MQTT_PASSWORD"),
+        "broker": "wss://339f0d63410548358f66c3cb882ec424.s1.eu.hivemq.cloud:8884"
+    })
+
 def on_message(client, userdata, message):
     topic = message.topic # nodes/{node}/jsonify(data)
     node = topic.split("/")[1] # {node}

@@ -36,7 +36,7 @@ def get_temp_avg(samples=5):
 def mqtt_publish(node, temp_value):
     try:
         unix_time = time.time() + EPOCH_OFFSET
-        payload = json.dumps({"temp": temp_value, "timestamp": unix_time}) # convert to JSON string
+        payload = json.dumps({"temp": float("{:.2f}".format(float(temp_value))), "timestamp": unix_time}) # convert to JSON string
         mqtt_client.publish(f"nodes/{node}/data", payload)
         print(f"Published to MQTT: {node} = {temp_value}°C, {unix_time}")
     except Exception as e:
@@ -47,8 +47,8 @@ def send_self_data(last_send_time):
 
     if current_time - last_send_time >= 1:
         # 1 second has passed --> send data
-        temp_value = "{:.2f}".format(get_temp_avg(5))
-        mqtt_publish("picow14", temp_value)
+        # temp_value = "{:.2f}".format(get_temp_avg(5))
+        mqtt_publish("picow14", get_temp_avg(5))
         last_send_time = current_time
     
     return last_send_time

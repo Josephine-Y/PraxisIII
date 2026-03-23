@@ -8,9 +8,9 @@ import os
 import ipaddress
 
 
-# -------------------------------------------
+# -------------------------------
 # Thermistor setup
-# -------------------------------------------
+# -------------------------------
 adc = analogio.AnalogIn(board.GP26)
 series_resistor = 10000
 nominal_resistance = 10000
@@ -28,21 +28,21 @@ def get_temp_avg(samples=5):
     for _ in range(samples):
         total += get_temp(adc.value)
     return total / samples
-    
-# -------------------------------------------
+
+# -------------------------------
 # Connect to Wi-Fi using settings.toml
-# -------------------------------------------
+# -------------------------------
 print("Connecting to Wi-Fi...")
 wifi.radio.connect(os.getenv('CIRCUITPY_WIFI_SSID'), os.getenv('CIRCUITPY_WIFI_PASSWORD'))
 print("Connected! IP address:", wifi.radio.ipv4_address)
 
 
-# -------------------------------------------
+# -------------------------------
 # UDP setup
-# -------------------------------------------
+# -------------------------------
 pool = socketpool.SocketPool(wifi.radio)
 udp = pool.socket(pool.AF_INET, pool.SOCK_DGRAM)
-UDP_IP = "10.164.2.14"  # ip address of hotspot 
+UDP_IP = os.getenv('SERVER_IP') # ip address of hotspot 
 UDP_PORT = 5000 #both sender and receiver have to go to the same port
 
 while True:
@@ -50,4 +50,4 @@ while True:
     msg = "{:.2f}".format(temp_c)
     udp.sendto(msg.encode(), (UDP_IP, UDP_PORT))
     print("Sent:", msg)
-    time.sleep(1)
+    time.sleep(0.8)

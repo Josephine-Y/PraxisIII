@@ -11,3 +11,5 @@ aio_key = "aio-key" # replace text with your aio key.
 # Create an account on a MQTT broker (e.g. HiveMQ Cloud) and enter your clusters's own username and password
 MQTT_USERNAME = "mqtt-username" 
 MQTT_PASSWORD = "mqtt-password"
+
+SERVER_API = "10.80.223.14"

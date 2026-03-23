@@ -16,7 +16,7 @@ import ssl
 import adafruit_ntp
 import rtc
 import adafruit_minimqtt.adafruit_minimqtt as MQTT
-
+import supervisor
 
 # ---------------------------------------------------
 # Thermistor Functions
@@ -33,6 +33,34 @@ def get_temp_avg(samples=5):
     return total / samples
 # ---------------------------------------------------
 # IoT Functions (MQTT)
+def connect_mqtt(retries=5, delay=5):
+    global pool, mqtt_client
+    for attempt in range(retries):
+        try:
+            print(f"MQTT connecting (attempt {attempt+1}/{retries})...")
+            mqtt_client.connect()
+            print("MQTT connected")
+            return True
+        except Exception as e:
+            print(f"MQTT Connection Error: {e}")
+            if attempt >= retries/2:
+
+                pool = socketpool.SocketPool(wifi.radio)
+                mqtt_client = MQTT.MQTT(
+                    broker="339f0d63410548358f66c3cb882ec424.s1.eu.hivemq.cloud",
+                    port=8883,
+                    username=os.getenv('MQTT_USERNAME'),
+                    password=os.getenv('MQTT_PASSWORD'),
+                    socket_pool=pool,
+                    is_ssl=True,
+                    ssl_context=ssl.create_default_context()
+                )
+                
+            if attempt < retries - 1:
+                print(f"Waiting {delay}s before retry...")
+                time.sleep(delay)
+    return False
+
 def mqtt_publish(node, temp_value):
     try:
         unix_time = time.time() + EPOCH_OFFSET
@@ -40,12 +68,12 @@ def mqtt_publish(node, temp_value):
         mqtt_client.publish(f"nodes/{node}/data", payload)
         print(f"Published to MQTT: {node} = {temp_value}°C, {unix_time}")
     except Exception as e:
-        print(f"MQTT Error: {e}")
+        print(f"MQTT Publish Error: {e}")
 
 def send_self_data(last_send_time):
-    current_time = time.time()
+    current_time = time.monotonic()
 
-    if current_time - last_send_time >= 1:
+    if current_time - last_send_time >= 0.8:
         # 1 second has passed --> send data
         # temp_value = "{:.2f}".format(get_temp_avg(5))
         mqtt_publish("picow14", get_temp_avg(5))
@@ -74,15 +102,33 @@ nominal_temp = 25
 beta = 3950
 # ---------------------------------------------------
 # Wifi Setup
-# wifi.radio.set_ipv4_address(ipv4=ipaddress.IPv4Address("10.164.2.14"), netmask=ipaddress.IPv4Address("255.255.255.0"), gateway=ipaddress.IPv4Address("10.80.223.222"))
 wifi.radio.connect(os.getenv('CIRCUITPY_WIFI_SSID'), os.getenv('CIRCUITPY_WIFI_PASSWORD'))
-# wifi.radio.ipv4_dns = ipaddress.IPv4Address("8.8.8.8") # use Google's DNS
 print("Connected to Wi-Fi")
+print(f"IP Address: {wifi.radio.ipv4_address}")
+print(f"Subnet Mask: {wifi.radio.ipv4_subnet}")
+print(f"Gateway: {wifi.radio.ipv4_gateway}")
+print(f"DNS: {wifi.radio.ipv4_dns}")
+
+# wifi.radio.set_ipv4_address(
+#     ipv4=ipaddress.IPv4Address("10.80.223.14"),
+#     netmask=ipaddress.IPv4Address("255.255.255.0"),
+#     gateway=ipaddress.IPv4Address("10.80.223.222"))
+
+#     #ipv4_dns=ipaddress.IPv4Address("8.8.8.8")) # use Google's DNS
+
+# print("IP Address changed:")
+# print(f"IP Address: {wifi.radio.ipv4_address}")
+# print(f"Subnet Mask: {wifi.radio.ipv4_subnet}")
+# print(f"Gateway: {wifi.radio.ipv4_gateway}")
+# print(f"DNS: {wifi.radio.ipv4_dns}")
+
 # ---------------------------------------------------
 # Server Setup
 try:
     pool = socketpool.SocketPool(wifi.radio)
+    print("Pool Connected")
     udp_server = pool.socket(pool.AF_INET, pool.SOCK_DGRAM)
+    print("Server Created")
 except Exception as e:
     print(f"Socket Error: {e}")
 
@@ -91,9 +137,15 @@ try:
     ntp = adafruit_ntp.NTP(pool, tz_offset=0)
     rtc.RTC().datetime = ntp.datetime
     EPOCH_OFFSET = 0
+    print("NTP Synced")
 except Exception as e:
     print(f"Clock Error: {e}")
-    EPOCH_OFFSET = 946684800 # seconds from 2000-01-01 (Pico) to 1970-01-01 (Unix)
+    current_time = time.time()
+    if current_time < 946684800: # NTP not synced --> Pico Epoch
+        EPOCH_OFFSET = 946684800 # seconds from 2000-01-01 (Pico) to 1970-01-01 (Unix)
+        print("Epoch Offset Used")
+    else:
+        EPOCH_OFFSET = 0
 
 UDP_IP = str(wifi.radio.ipv4_address)
 UDP_PORT = 5000
@@ -112,10 +164,12 @@ mqtt_client = MQTT.MQTT(
     ssl_context=ssl.create_default_context()
 )
 
-try:
-    mqtt_client.connect()
-except Exception as e:
-    print(f"MQTT Connection Error: {e}")
+mqtt_connected = connect_mqtt(retries=5, delay=5)
+if not mqtt_connected:
+    print("MQTT failed after all retries. Restarting...")
+    time.sleep(2)
+    supervisor.reload()
+
 # ---------------------------------------------------
     
 buffer = bytearray(1024)
@@ -128,14 +182,25 @@ try:
        # try:
         last_send_time = send_self_data(last_send_time)
 
-        # receive_data(buffer)
-
-        mqtt_client.loop()
+        receive_data(buffer)
+        
+        try:
+            mqtt_client.loop()
+        except Exception as e:
+            print(f"MQTT Loop Error: {e}")
+            print("MQTT Reconnecting...")
+            time.sleep(5)
+            mqtt_connected = connect_mqtt(retries=5, delay=5)
+            if not mqtt_connected:
+                supervisor.reload()
 
         time.sleep(0.05)
         #except Exception as e:
            # print(f"Error: {e}")
 finally:
     udp_server.close()
-    mqtt_client.disconnect()
+    try:
+        mqtt_client.disconnect()
+    except Exception as e:
+        print(f"MQTT  Disconnect Error: {e}")
     print("Connection closed")

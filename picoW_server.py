@@ -1,5 +1,9 @@
 # picoW_server.py
+# picoW --> MQTT broker --> Web Dashboard
+#               |
+#           Flask API (Render) --> Database (Supabase)
 
+import json
 import os
 import time
 import board
@@ -7,13 +11,11 @@ import analogio
 import math
 import wifi
 import socketpool
-import ipaddress
 import ssl
-import microcontroller
-import busio
-import adafruit_requests
-import select
-from adafruit_io.adafruit_io import IO_HTTP, AdafruitIO_RequestError
+import adafruit_ntp
+import rtc
+import adafruit_minimqtt.adafruit_minimqtt as MQTT
+
 
 # ---------------------------------------------------
 # Thermistor Functions
@@ -29,137 +31,39 @@ def get_temp_avg(samples=5):
         total += get_temp(adc.value)
     return total / samples
 # ---------------------------------------------------
-# Adafruit API Functions
-def get_feed(feed_name):
+# IoT Functions (MQTT)
+def mqtt_publish(node, temp_value):
     try:
-        # get feed
-        picow_feed = io.get_feed(feed_name)
-        print(f"Got feed: {feed_name}")  
-
-    except AdafruitIO_RequestError:
-        # if no feed exists, create one
-        print(f"Feed not found: {feed_name}")
-        picow_feed = io.create_new_feed(feed_name)
-    
-    return picow_feed["key"]
-
-def send_to_adafruit(feed_key, value):
-    # sends the server node's temperature data as default, if not otherwise specified
-    try:
-        io.send_data(feed_key, value)
-        print(f"Sent to Adafruit {feed_key}: {value}")
-
+        unix_time = time.time() + EPOCH_OFFSET
+        payload = json.dumps({"temp": temp_value, "timestamp": unix_time}) # convert to JSON string
+        mqtt_client.publish(f"nodes/{node}/data", payload)
+        print(f"Published to MQTT: {node} = {temp_value}°C, {unix_time}")
     except Exception as e:
-        print(f"Error sending {value} to Adafruit IO {feed_key}: {e}")
-# ---------------------------------------------------
-# IoT Functions
-def add_data_pack(ip, data):
-    # data_pack = [data, time.time()]
-    data_pack = data
-    # clients_data[ip].append(data_pack)
-    clients_data[ip] = data_pack
-    print(f"{data_pack} added to {ip} client data")
+        print(f"MQTT Error: {e}")
 
 def send_self_data(last_send_time):
     current_time = time.time()
 
     if current_time - last_send_time >= 1:
         # 1 second has passed --> send data
-        # send_to_adafruit(feeds["14"], "{:.2f}".format(get_temp_avg(5)))
-        add_data_pack(UDP_IP, "{:.2f}".format(get_temp_avg(5)))
+        temp_value = "{:.2f}".format(get_temp_avg(5))
+        mqtt_publish("picow14", temp_value)
         last_send_time = current_time
     
     return last_send_time
 
 def receive_data(buffer):
-    size, client_address = udp_server.recvfrom_into(buffer)
-    data = buffer[:size]
-    print(f"Received message: {data.decode()} from {client_address}")
-    # send_to_adafruit(feeds[str(client_address[0][-2:])], data.decode())
-    add_data_pack(client_address[0], data.decode())
-# --------------------------------------------------    -
-# Webpage Functions
-def generate_page():
-    html = """
-    <html>
-    <head>
-    <title>Sensor Node Data</title>
-    <meta http-equiv="refresh" content="2">
-    <style>
-    body { font-family: Arial; background:#111; color:white; }
-    table { border-collapse: collapse; width:50%; }
-    th, td { border:1px solid white; padding:8px; text-align:center; }
-    th { background:#333; }
-    </style>
-    </head>
-    <body>
-    <h1>Sensor Node Dashboard</h1>
-    <table>
-    <tr><th>Client IP</th><th>Latest Data</th></tr>
-    
-    <script>
-    async function fetchData() {
-        try {
-            const res = await fetch('/data');
-            const json = await res.json();
-            const tbody = document.getElementById('data-body');
-            tbody.innerHTML = '';
-            for (const [ip, value] of Object.entries(json)) {
-                tbody.innerHTML += `<tr><td>${ip}</td><td>${value}</td></tr>`;
-            }
-        } catch (e) {
-            console.log('Fetch error:', e);
-        }
-    }
-
-    setInterval(fetchData, 1000); # fetches data every second
-    fetchData();
-    </script>
-    """
-
-    for ip, data in clients_data.items():
-        html += f"<tr><td>{ip}</td><td>{data}</td></tr>"
-
-    html += """
-    </table>
-    </body>
-    </html>
-    """
-    # print(html)
-    # print(str(html))
-    return str(html)
-
-def serve(buffer):
     try:
-        # Check if a connection is actually ready before accepting
-        readable, _, _ = select.select([web_socket], [], [], 0)
-        if not readable:
-            return  # nothing waiting, skip immediately
-        
-        connection, addr = web_socket.accept()
-        print("Connection accepted")
-        
-        # Wait for request data to arrive
-        readable, _, _ = select.select([connection], [], [], 2)
-        if not readable:
-            connection.close()
-            return
-            
-        request = connection.recv_into(buffer)
-        print(f"Received request: {request}")
-        html = generate_page()
-        response = f"HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nConnection: close\r\n\r\n{html}"
-        connection.send(response.encode())
-        connection.close()
-        print("Webpage served")
-
+        size, client_address = udp_server.recvfrom_into(buffer)
+        data = buffer[:size]
+        print(f"Received message: {data.decode()} from {client_address}")
+        node = f"picow{client_address[0].split('.')[-1]}"
+        mqtt_publish(node, data.decode())      
     except OSError as e:
         if e.errno == 11:
             pass
         else:
-            print(f"Webpage Error: {e}")
-    # finally:
-        #connection.close()
+            print(f"Receive Data Error: {e}")
 # ---------------------------------------------------
 # Thermistor Setup
 adc = analogio.AnalogIn(board.GP26)
@@ -176,44 +80,35 @@ print("Connected to Wi-Fi")
 pool = socketpool.SocketPool(wifi.radio)
 udp_server = pool.socket(pool.AF_INET, pool.SOCK_DGRAM)
 
+# sync Pico's Real Time Clock to Network Time Protocol on the internet
+try:
+    ntp = adafruit_ntp.NTP(pool, tz_offset=0)
+    rtc.RTC().datetime = ntp.datetime
+    EPOCH_OFFSET = 0
+except Exception as e:
+    EPOCH_OFFSET = 946684800 # seconds from 2000-01-01 (Pico) to 1970-01-01 (Unix)
+
 UDP_IP = str(wifi.radio.ipv4_address)
 UDP_PORT = 5000
 udp_server.bind((UDP_IP, UDP_PORT))
 udp_server.setblocking(False)
 print(f"Server listening on {UDP_IP}:{UDP_PORT}")
 # ---------------------------------------------------
-# Adafruit Setup
-aio_username = os.getenv('aio_username')
-aio_key = os.getenv('aio_key')
+# MQTT Broker Setup
+mqtt_client = MQTT.MQTT(
+    broker="339f0d63410548358f66c3cb882ec424.s1.eu.hivemq.cloud",
+    port=8883, # TSL port
+    username=os.getenv('MQTT_USERNAME'),
+    password=os.getenv('MQTT_PASSWORD'),
+    ssl=True,
+    ssl_context=ssl.create_default_context()
+)
 
-# Initialize an Adafruit IO HTTP API object
-requests = adafruit_requests.Session(pool, ssl.create_default_context())
-io = IO_HTTP(aio_username, aio_key, requests)
-print("connected to io")
-
-# Get feeds for each underground node
-feeds = {
-    "14": get_feed("picow14"),
-    "141": get_feed("picow141"),
-    "142": get_feed("picow142"),
-    "42": get_feed("picow42")
-}
-# ---------------------------------------------------
-# Webpage Setup
-web_socket = pool.socket(pool.AF_INET, pool.SOCK_STREAM)
-web_socket.setsockopt(pool.SOL_SOCKET, pool.SO_REUSEADDR, 1)
-web_socket.bind((UDP_IP, 8080))
-web_socket.listen(1)
-web_socket.setblocking(False)
-print(f"Web dashboard at http://{UDP_IP}:8080")
+mqtt_client.connect()
 # ---------------------------------------------------
 
 buffer = bytearray(1024)
 last_send_time = 0
-clients_data = {}
-# Initialize empty data lists for each client feed
-for feed in feeds:
-    clients_data[f"10.164.2.{feed}"] = []
 
 try:
     print("Waiting for data...")
@@ -224,12 +119,11 @@ try:
 
         # receive_data(buffer)
 
-        serve(buffer)
+        mqtt_client.loop()
+
         time.sleep(0.05)
         #except Exception as e:
            # print(f"Error: {e}")
 finally:
     udp_server.close()
-    web_socket.close()
     print("Connection closed")
-

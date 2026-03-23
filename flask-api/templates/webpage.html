@@ -1,0 +1,73 @@
+<html>
+    <head>
+        <title>Sensor Node Data</title>
+        <!-- <meta http-equiv="refresh" content="2"> -->
+         <script src="https://cdnjs.cloudflare.com/ajax/libs/mqtt/5.0.3/mqtt.min.js"></script>
+        <style>
+        body { font-family: Arial; background:#111; color:white; }
+        table { border-collapse: collapse; width:50%; }
+        th, td { border:1px solid white; padding:8px; text-align:center; }
+        th { background:#333; }
+        </style>
+    </head>
+
+    <body>
+        <h1>Sensor Node Dashboard</h1>
+
+        <table>
+            <tr><th>Client IP</th><th>Latest Temperature</th><th>Timestamp</th></tr>
+            <tbody id="data-body"></tbody>
+        </table>
+        
+        <script>
+            // const FLASK_URL = "http://localhost:8080";
+            const FLASK_URL = "https://mia-0w2l.onrender.com";
+            const mqtt_client = mqtt.connect("wss://339f0d63410548358f66c3cb882ec424.s1.eu.hivemq.cloud:8884", {
+                username: os.getenv('MQTT_USERNAME'),
+                password: os.getenv('MQTT_PASSWORD')
+            });
+
+            mqtt_client.on('connect', () => {
+                console.log('Connected to MQTT broker');
+                mqtt_client.subscribe('nodes/+/data');
+            });
+
+            mqtt_client.on('message', (topic, message) => {
+                const node = topic.split('/')[1];
+                const data = JSON.parse(message.toString());
+                updateNode(node, data.temp, data.timestamp);
+                console.log(`Received message on ${topic}: ${message.toString()}`);
+            });
+
+            function updateNode(node, temp, timestamp) {
+                const tbody = document.getElementById('data-body');
+                let node_latest = document.getElementById(`${node}-latest`);
+                const temp = temp !== null ? `${temp.toFixed(2)}°C` : '--';
+                const timestamp = timestamp ? new Date(timestamp).toLocaleTimeString("en-US", {timeZone: "America/Toronto"}) : '--';
+                if (!node_latest) {
+                    node_latest = document.createElement('tr');
+                    node_latest.id = `${node}-latest`;
+                    tbody.appendChild(node_latest);
+                }
+                node_latest.innerHTML= `<td>${node}</td><td>${temp}</td><td>${timestamp}</td>`;
+            }
+            
+            async function fetchData() {
+                try {
+                    const res = await fetch('/latest');
+                    const json = await res.json();
+                    const tbody = document.getElementById('data-body');
+                    tbody.innerHTML = '';
+                    for (const [node, values] of Object.entries(json)) {
+                        updateNode(node, values.temperature, values.timestamp);
+                    }
+                } catch (e) {
+                    console.log('Fetch error:', e);
+                }
+            }
+
+            fetchData();
+        </script>
+
+    </body>
+    </html>

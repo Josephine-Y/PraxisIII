@@ -51,7 +51,7 @@ print("Connected! IP:", wifi.radio.ipv4_address)
 pool = socketpool.SocketPool(wifi.radio)
 udp = pool.socket(pool.AF_INET, pool.SOCK_DGRAM)
 
-UDP_IP = "10.164.2.14"   # receiver IP
+UDP_IP = "10.112.220.14"   # receiver IP
 UDP_PORT = 5000          # same port on receiver
 
 # -------------------------------------------

@@ -7,3 +7,9 @@ CIRCUITPY_WIFI_PASSWORD = "network-password" # the WiFi password
 # see here on how to access your username and key: https://io.adafruit.com/api/docs/#adafruit-io-http-api
 aio_username = "aio-username" # replace text with your aio username
 aio_key = "aio-key" # replace text with your aio key.
+
+# Create an account on a MQTT broker (e.g. HiveMQ Cloud) and enter your clusters's own username and password
+MQTT_USERNAME = "Praxisiii" 
+MQTT_PASSWORD = "MiceAreNotRats"
+
+SERVER_API = "10.112.220.14"

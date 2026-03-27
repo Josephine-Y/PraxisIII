@@ -1,3 +1,5 @@
+#red 11 (gp16), orange 13 (gnd) yellow 26 3v3
+
 from machine import Pin
 import time
 

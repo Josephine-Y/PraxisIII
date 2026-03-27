@@ -5,11 +5,13 @@ import math
 import wifi
 import socketpool
 import os
+import microcontroller
 
 # -------------------------------------------
 # Thermistor setup
 # -------------------------------------------
 adc = analogio.AnalogIn(board.GP26)
+
 series_resistor = 10000
 nominal_resistance = 10000
 nominal_temp = 25
@@ -28,13 +30,10 @@ def get_temp_avg(samples=5):
     return total / samples
 
 # -------------------------------------------
-# Internal chip temperature
+# Internal chip temperature (FIXED)
 # -------------------------------------------
-chip_adc = analogio.AnalogIn(board.TEMPERATURE)
-
 def get_chip_temp():
-    voltage = chip_adc.value * 3.3 / 65535
-    return 27 - (voltage - 0.706) / 0.001721
+    return microcontroller.cpu.temperature
 
 # -------------------------------------------
 # Connect to Wi-Fi
@@ -52,8 +51,8 @@ print("Connected! IP:", wifi.radio.ipv4_address)
 pool = socketpool.SocketPool(wifi.radio)
 udp = pool.socket(pool.AF_INET, pool.SOCK_DGRAM)
 
-UDP_IP = "10.164.2.14"
-UDP_PORT = 5000
+UDP_IP = "10.164.2.14"   # receiver IP
+UDP_PORT = 5000          # same port on receiver
 
 # -------------------------------------------
 # Main loop
@@ -62,7 +61,7 @@ while True:
     therm_temp = get_temp_avg(5)
     chip_temp = get_chip_temp()
 
-    # Create comma-separated packet
+    # Send both values in one packet (comma separated)
     msg = "{:.2f},{:.2f}".format(therm_temp, chip_temp)
 
     udp.sendto(msg.encode(), (UDP_IP, UDP_PORT))

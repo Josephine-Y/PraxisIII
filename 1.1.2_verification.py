@@ -1,129 +1,121 @@
-# 1.1.2_verification.py
-# Pico W (MicroPython) Hall-effect anemometer verification logger
-# Runs for exactly 30 seconds from start of run.
+# 1.1.2_verification.py  (MicroPython on Pico W)
+# 30-second Hall-effect anemometer verification logger
 
 from machine import Pin
 import time
 import math
 
 # -----------------------------
-# Hardware / measurement settings
+# USER SETTINGS
 # -----------------------------
-SENSOR_PIN = 16
 
-# If one magnet (or one pulse) per rotation, this is 1.
-# If you have multiple magnets, set accordingly.
-PULSES_PER_ROTATION = 1
-
-# How often to compute/report speed (seconds)
-REPORT_INTERVAL_S = 1.0
-
-# Total test duration (seconds)
-DURATION_S = 30.0
-
-# Debounce to reject chatter/noise (ms)
-DEBOUNCE_MS = 15
-
-# Calibration factor:
-# If you haven't calibrated yet, leave as 1.0.
-# Later you can set WIND_SPEED_FACTOR so that:
-# wind_speed_mps = rotations_per_second * WIND_SPEED_FACTOR
-WIND_SPEED_FACTOR = 1.0
-
-# Optional CSV logging
-LOG_TO_CSV = False
-CSV_FILENAME = "anemometer_verification.csv"
+HALL_PIN = 16                  # GPIO pin connected to hall sensor output
+PULSES_PER_REV = 2             # Number of valid hall state changes per full rotation
+radius = 0.3                # Radius from shaft center to cup center (meters)
+CALIBRATION_FACTOR = 1.0       # Adjust after testing / calibration
+SAMPLE_TIME = 1.0              # Seconds between wind speed calculations
+DEBOUNCE_MS = 3                # Ignore very fast false triggers
 
 # -----------------------------
-# Pulse counting via interrupt
+# GLOBAL VARIABLES
 # -----------------------------
+
+DURATION_S = 30.0           # verification duration
 pulse_count = 0
-last_pulse_ms = 0
+last_trigger_ms = 0
 
-sensor = Pin(SENSOR_PIN, Pin.IN)
+# -----------------------------
+# INTERRUPT CALLBACK
+# -----------------------------
 
-def count_pulse(pin):
-    global pulse_count, last_pulse_ms
+def hall_callback(pin):
+    global pulse_count, last_trigger_ms
+
     now = time.ticks_ms()
-    if time.ticks_diff(now, last_pulse_ms) > DEBOUNCE_MS:
+    if time.ticks_diff(now, last_trigger_ms) > DEBOUNCE_MS:
         pulse_count += 1
-        last_pulse_ms = now
+        last_trigger_ms = now
 
-# For Hall sensors, count *one* edge to avoid double-counting.
-sensor.irq(trigger=Pin.IRQ_RISING, handler=count_pulse)
+# -----------------------------
+# SENSOR SETUP
+# -----------------------------
+hall_sensor = Pin(HALL_PIN, Pin.IN, Pin.PULL_UP)
+hall_sensor.irq(trigger=Pin.IRQ_RISING | Pin.IRQ_FALLING, handler=hall_callback)
 
+# -----------------------------
+# HELPER: compute wind speed from pulses
+# -----------------------------
+CIRCUMFERENCE_M = 2.0 * math.pi * RADIUS_M
+
+def compute_wind_from_pulses(pulses_in_window: int, window_s: float):
+    # rotations per second
+    rev_per_sec = (pulses_in_window / PULSES_PER_REV) / window_s if window_s > 0 else 0.0
+    cup_speed_m_s = rev_per_sec * CIRCUMFERENCE_M
+    wind_speed_m_s = cup_speed_m_s * CALIBRATION_FACTOR
+    return rev_per_sec, wind_speed_m_s
+
+# -----------------------------
+# RUN 30s TEST
+# -----------------------------
 print("Starting 30s anemometer verification...")
-print("sensor_pin:", SENSOR_PIN)
-print("pulses_per_rotation:", PULSES_PER_ROTATION)
-print("report_interval_s:", REPORT_INTERVAL_S)
-print("debounce_ms:", DEBOUNCE_MS)
-print("wind_speed_factor:", WIND_SPEED_FACTOR)
-print("\ntime_s,pulses,rot_per_s,rpm,wind_speed_est")
+print("time_s,pulses_in_window,rev_per_s,wind_m_s,wind_km_h")
 
-# Prepare CSV if needed
-csv_file = None
-if LOG_TO_CSV:
-    csv_file = open(CSV_FILENAME, "w")
-    csv_file.write("time_s,pulses,rot_per_s,rpm,wind_speed_est\n")
-
-# For summary stats
 wind_samples = []
 
-start = time.ticks_ms()
-next_report = start
-end_time = start + int(DURATION_S * 1000)
+start_ms = time.ticks_ms()
+end_ms = time.ticks_add(start_ms, int(DURATION_S * 1000))
 
-# We'll compute speed each report interval based on pulses in that window.
-window_start = start
-window_start_pulses = 0
+# window baseline
+window_start_ms = start_ms
 
-while time.ticks_diff(time.ticks_ms(), end_time) < 0:
-    now = time.ticks_ms()
+# snapshot baseline pulses
+# (briefly disable IRQ to read pulse_count cleanly)
+hall_sensor.irq(handler=None)
+baseline_pulses = pulse_count
+hall_sensor.irq(trigger=Pin.IRQ_RISING | Pin.IRQ_FALLING, handler=hall_callback)
 
-    if time.ticks_diff(now, next_report) >= 0:
-        # Snapshot pulse count atomically-ish: briefly disable IRQ while reading/resetting baselines
-        state = sensor.irq(handler=None)  # disable IRQ
+next_sample_ms = time.ticks_add(start_ms, int(SAMPLE_TIME_S * 1000))
+
+while time.ticks_diff(time.ticks_ms(), end_ms) < 0:
+    now_ms = time.ticks_ms()
+
+    # Take a sample each SAMPLE_TIME_S (e.g., once per second)
+    if time.ticks_diff(now_ms, next_sample_ms) >= 0:
+        # Snapshot pulse_count safely
+        hall_sensor.irq(handler=None)
         current_pulses = pulse_count
-        sensor.irq(trigger=Pin.IRQ_RISING, handler=count_pulse)  # re-enable
+        hall_sensor.irq(trigger=Pin.IRQ_RISING | Pin.IRQ_FALLING, handler=hall_callback)
 
-        # Pulses observed in the last window
-        pulses_in_window = current_pulses - window_start_pulses
-        dt_s = time.ticks_diff(now, window_start) / 1000.0
-        if dt_s <= 0:
-            dt_s = REPORT_INTERVAL_S
+        pulses_in_window = current_pulses - baseline_pulses
+        window_s = time.ticks_diff(now_ms, window_start_ms) / 1000.0
 
-        pulses_per_second = pulses_in_window / dt_s
-        rot_per_s = pulses_per_second / PULSES_PER_ROTATION
-        rpm = rot_per_s * 60.0
-        wind_est = rot_per_s * WIND_SPEED_FACTOR
+        rev_per_s, wind_m_s = compute_wind_from_pulses(pulses_in_window, window_s)
+        wind_km_h = wind_m_s * 3.6
 
-        elapsed_s = time.ticks_diff(now, start) / 1000.0
-        line = "{:.2f},{:d},{:.3f},{:.1f},{:.3f}".format(elapsed_s, pulses_in_window, rot_per_s, rpm, wind_est)
+        elapsed_s = time.ticks_diff(now_ms, start_ms) / 1000.0
+
+        line = "{:.2f},{:d},{:.3f},{:.3f},{:.3f}".format(
+            elapsed_s, pulses_in_window, rev_per_s, wind_m_s, wind_km_h
+        )
         print(line)
+        
+        wind_samples.append(wind_m_s)
 
-        if csv_file:
-            csv_file.write(line + "\n")
+        # reset window baselines
+        window_start_ms = now_ms
+        baseline_pulses = current_pulses
 
-        wind_samples.append(wind_est)
+        # schedule next sample (prevents drift)
+        next_sample_ms = time.ticks_add(next_sample_ms, int(SAMPLE_TIME_S * 1000))
 
-        # Advance the window
-        window_start = now
-        window_start_pulses = current_pulses
-        next_report = time.ticks_add(next_report, int(REPORT_INTERVAL_S * 1000))
-
-    # Small sleep to reduce CPU usage
-    time.sleep_ms(10)
-
-if csv_file:
-    csv_file.close()
-    print("\nSaved CSV:", CSV_FILENAME)
+    time.sleep_ms(5)
 
 # -----------------------------
-# Summary stats
+# Summary stats for this 30s trial
 # -----------------------------
 n = len(wind_samples)
 if n == 0:
-    print("\nNo samples collected.")
+    print("\nNo wind samples collected. Check wiring / sensor / debounce / magnet alignment.")
 else:
     mean = sum(wind_samples) / n
     var = sum((x - mean) ** 2 for x in wind_samples) / n
@@ -131,6 +123,7 @@ else:
 
     print("\n--- 30s Summary ---")
     print("samples:", n)
-    print("mean_wind_est:", round(mean, 4))
-    print("std_wind_est: ", round(std, 4))
+    print("mean_wind_m_s:", round(mean, 3))
+    print("std_wind_m_s: ", round(std, 3))
+    print("mean_wind_km_h:", round(mean * 3.6, 3))
     print("-------------------")

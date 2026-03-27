@@ -1,3 +1,6 @@
+# 3.1.1_verification.py
+# Client Code
+
 import time
 import board
 import analogio
@@ -5,6 +8,7 @@ import math
 import wifi
 import socketpool
 import os
+import microcontroller
 
 # -------------------------------------------
 # Thermistor setup
@@ -30,11 +34,8 @@ def get_temp_avg(samples=5):
 # -------------------------------------------
 # Internal chip temperature
 # -------------------------------------------
-chip_adc = analogio.AnalogIn(board.TEMPERATURE)
-
 def get_chip_temp():
-    voltage = chip_adc.value * 3.3 / 65535
-    return 27 - (voltage - 0.706) / 0.001721
+    return microcontroller.cpu.temperature
 
 # -------------------------------------------
 # Connect to Wi-Fi

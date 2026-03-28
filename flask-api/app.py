@@ -187,7 +187,7 @@ def on_connect(client, userdata, flags, rc):
 
 def start_mqtt():
     try:
-        client = MQTT.Client()(transport="websockets")
+        client = MQTT.Client(transport="websockets")
         client.on_connect = on_connect
         client.on_message = on_message
         # client.username_pw_set(os.getenv("MQTT_USERNAME"), os.getenv("MQTT_PASSWORD"))

@@ -11,6 +11,7 @@ import json
 from umqtt.simple import MQTTClient
 import config
 import select
+import ntptime
 
 # ---------------------------------------------------
 # Configuration
@@ -60,6 +61,20 @@ def connect_wifi():
     print("Connected to IP:", wlan.ifconfig())
     return wlan
 
+def sync_time():
+    global EPOCH_OFFSET
+    try:
+        ntptime.host = "pool.ntp.org"
+        ntptime.settime()  # sets the internal RTC to UTC
+        print("Time synchronized via NTP")
+        EPOCH_OFFSET = 0
+    except Exception as e:
+        EPOCH_OFFSET = 946684800
+        print("NTP sync failed, using local time with offset:", EPOCH_OFFSET)
+        print("NTP sync failed:", e)
+
+def local_timestamp():
+    return time.time() + EPOCH_OFFSET
 # ---------------------------------------------------
 # MQTT Setup
 def connect_mqtt(retries=5, delay=2):
@@ -155,7 +170,7 @@ def receive_data(sock, buffer, all_data):
         node = data.get("node")
         all_data[node] = {
             "temp": float(data.get("temp")),
-            "timestamp": time.time()
+            "timestamp": local_timestamp()
         }
         # print("Received:", node, all_data[node])
     except Exception as e:
@@ -164,6 +179,7 @@ def receive_data(sock, buffer, all_data):
 # ---------------------------------------------------
 # Main Setup
 wlan = connect_wifi()
+sync_time()
 mqtt = connect_mqtt()
 udp_server = setup_udp()
 
@@ -184,7 +200,7 @@ while True:
 
         all_data["anemometer"] = {
             "wind_speed": wind_speed_m_s,
-            "timestamp": time.time()
+            "timestamp": local_timestamp()
         }
 
         print("Wind Speed: {:.2f} m/s | {:.2f} km/h".format(
@@ -200,5 +216,6 @@ while True:
             except Exception as e:
                 print("MQTT error:", e)
                 mqtt = connect_mqtt()
-
+                
+        all_data.clear()
         last_publish = time.time()

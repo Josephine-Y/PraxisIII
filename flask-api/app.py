@@ -62,6 +62,27 @@ def get_latest_data():
     except Exception as e:
         print(f"Database error: {e}")
         return jsonify({"error": "Database Error"}), 500
+
+def save_to_db(node, temp, wind_speed, unix_time):
+    # convert unix timestamp to datetime for Supabase
+    timestamp = datetime.fromtimestamp(unix_time, tz=timezone.utc)
+
+    try:
+        # latest_cache[node] = {"temperature": temp, "wind_speed": wind_speed, "timestamp": str(timestamp)}
+
+        connection = get_db()
+        cursor = connection.cursor()
+        cursor.execute(
+            "INSERT INTO data (node, temperature, wind_speed, timestamp) VALUES (%s, %s, %s, %s)",
+            (node, temp, wind_speed, timestamp)
+        )
+        connection.commit()
+        cursor.close()
+        connection.close()
+        print(f"Sent to database {node} = {temp}°C, {wind_speed} m/s, {timestamp}")
+    
+    except Exception as e:
+        print(f"Receive Data Error: {e}")
 # ---------------------------------------------------
 # Calculate rate of spread
 
@@ -134,27 +155,6 @@ def get_rate_of_spread():
     rate_of_spread, hot_nodes_count = calculate_ros()
     return jsonify({"rate_of_spread": rate_of_spread, "hot_nodes_count": hot_nodes_count})
 
-def save_to_db(node, temp, wind_speed, unix_time):
-    # convert unix timestamp to datetime for Supabase
-    timestamp = datetime.fromtimestamp(unix_time, tz=timezone.utc)
-
-    try:
-        # latest_cache[node] = {"temperature": temp, "wind_speed": wind_speed, "timestamp": str(timestamp)}
-
-        connection = get_db()
-        cursor = connection.cursor()
-        cursor.execute(
-            "INSERT INTO data (node, temperature, wind_speed, timestamp) VALUES (%s, %s, %s, %s)",
-            (node, temp, wind_speed, timestamp)
-        )
-        connection.commit()
-        cursor.close()
-        connection.close()
-        print(f"Sent to database {node} = {temp}°C, {wind_speed} m/s, {timestamp}")
-    
-    except Exception as e:
-        print(f"Receive Data Error: {e}")
-
 # MQTT Callback Methods
 @app.route("/mqtt-config")
 def mqtt_config():
@@ -187,13 +187,13 @@ def on_connect(client, userdata, flags, rc):
 
 def start_mqtt():
     try:
-        client = MQTT.Client()
+        client = MQTT.Client()(transport="websockets")
         client.on_connect = on_connect
         client.on_message = on_message
-        client.username_pw_set(os.getenv("MQTT_USERNAME"), os.getenv("MQTT_PASSWORD"))
-        client.tls_set() # SSL/TLS encryption
-        client.connect("339f0d63410548358f66c3cb882ec424.s1.eu.hivemq.cloud", 8883)
-        client.loop_forever()
+        # client.username_pw_set(os.getenv("MQTT_USERNAME"), os.getenv("MQTT_PASSWORD"))
+        # client.tls_set() # SSL/TLS encryption
+        client.connect("broker.emqx.io", port=8084)
+        client.loop_forever()   
     except Exception as e:
         print(f"MQTT Client Error: {e}")
 

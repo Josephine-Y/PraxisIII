@@ -49,17 +49,13 @@ def get_temp_avg(samples: int = 5, sample_delay_s: float = 0.02) -> float:
 # -----------------------------
 # Measurement settings
 # -----------------------------
-DURATION_S = 30.0
+DURATION_S = 10.0
 AVG_SAMPLES = 5
 
 # Choose an update interval for printing.
 # With AVG_SAMPLES=5 and sample_delay_s=0.02, you already spend ~0.10 s sampling.
 # This keeps prints readable without slowing you down too much.
-PRINT_INTERVAL_S = 0.2
-
-# Optional CSV logging to the Pico filesystem (set to True if you want a file)
-LOG_TO_CSV = False
-CSV_FILENAME = "temp_verification.csv"
+PRINT_INTERVAL_S = 0.5
 
 # -----------------------------
 # Run test
@@ -71,11 +67,6 @@ start = time.monotonic()
 next_print = start
 
 temps = []  # store samples for mean/std
-
-csv_file = None
-if LOG_TO_CSV:
-    csv_file = open(CSV_FILENAME, "w")
-    csv_file.write("time_s,temp_c\n")
 
 while True:
     now = time.monotonic()
@@ -92,15 +83,7 @@ while True:
         line = f"{elapsed:.2f},{temp_c:.2f}"
         print(line)
 
-        if csv_file:
-            csv_file.write(line + "\n")
-
         next_print += PRINT_INTERVAL_S
-
-# Close CSV if used
-if csv_file:
-    csv_file.close()
-    print(f"\nSaved CSV: {CSV_FILENAME}")
 
 # Compute summary stats (mean, std dev)
 # Use population std dev here; if you prefer sample std dev, use (n-1) in denominator.

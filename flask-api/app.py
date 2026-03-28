@@ -193,7 +193,7 @@ def start_mqtt():
         client.on_connect = on_connect
         client.on_message = on_message
 
-        client.tls_set(cert_reqs=ssl.CERT_NONE)
+        # client.tls_set(cert_reqs=ssl.CERT_NONE)
 
         client.connect("broker.emqx.io", port=1883)
         client.loop_forever()

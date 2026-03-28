@@ -95,6 +95,7 @@
 
                 async function fetchRateOfSpread() { 
                     try {
+                        console.log("Fetching ROS data...");
                         const res = await fetch('/rateofspread');
                         const json = await res.json();
                         const tbody = document.getElementById('ros-body');
@@ -135,6 +136,7 @@
                 }
                 startMQTT();
                 fetchData();
+                fetchRateOfSpread();
             </script>
 
         </body>

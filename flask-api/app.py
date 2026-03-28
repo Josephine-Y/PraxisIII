@@ -139,13 +139,13 @@ def update_last_hot_times():
 def calculate_ros():
     global last_hot_time
     triggered_nodes = [
-    (node, t)
-    for node, t in last_hot_time.items()
-    if isinstance(t, (int, float)) and t > 0
+        (node, info["timestamp"])
+        for node, info in last_hot_time.items()
+        if isinstance(info, dict) and isinstance(info.get("timestamp"), (int, float))
     ]
-    
+
     if len(triggered_nodes) < 2:
-        return 0.0, len(triggered_nodes)
+        return 0.0, len(triggered_nodes), triggered_nodes
     elif len(triggered_nodes) == 2:
         node1, t1 = triggered_nodes[0]
         node2, t2 = triggered_nodes[1]
@@ -154,9 +154,9 @@ def calculate_ros():
         d = math.hypot(x2 - x1, y2 - y1)
         dt = abs(t2 - t1)
         if dt == 0:
-            return 0.0, 2
+            return 0.0, 2, triggered_nodes
         ros = d / dt
-        return ros, 2
+        return ros, 2, triggered_nodes
     else:
         X = []
         t_vec = []
@@ -166,18 +166,17 @@ def calculate_ros():
             t_vec.append(t)
         a, b, c = np.linalg.lstsq(np.array(X), np.array(t_vec), rcond=None)[0]
         ros = 1 / math.sqrt(a**2 + b**2)
-
         return ros, len(triggered_nodes), triggered_nodes
     
 @app.route("/rateofspread", methods=["GET"])
 def get_rate_of_spread():
     update_last_hot_times()
-    rate_of_spread, hot_nodes_count = calculate_ros()
+    rate_of_spread, hot_nodes_count, triggered_nodes_list = calculate_ros()
 
     # Include triggered nodes and their latest temperatures
     triggered_nodes_info = [
         {"node": node, "temperature": last_hot_time[node]["temperature"]}
-        for node in last_hot_time if isinstance(last_hot_time[node], dict)
+        for node, _ in triggered_nodes_list
     ]
     
     return jsonify({

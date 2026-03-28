@@ -84,10 +84,10 @@ def get_node_location(node):
 
 # Update last hot times
 def update_last_hot_times():
-    latest_data = get_latest_data() # latest_data[node] = {"temperature": temp, "timestamp": timestamp}
+    latest_data = get_latest_data().get_json() # latest_data[node] = {"temperature": temp, "timestamp": timestamp}
     
     global last_hot_time
-    for node, values in latest_data:
+    for node, values in latest_data.items():
         temp = values["temperature"]
 
         if temp is None:

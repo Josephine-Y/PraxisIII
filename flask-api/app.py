@@ -64,7 +64,7 @@ def get_latest_data():
 
         latest_data = {node: {"temperature": None, "wind_speed": None, "timestamp": None} for node in FEEDS}
         for row in rows:
-            latest_data[row[0]] = {"temperature": row[1], "wind_speed": row[2], "timestamp": row[3]}
+            latest_data[row[0]] = {"temperature": row[1], "wind_speed": row[2], "timestamp": row[3].timestamp() if row[3] else None}
         return jsonify(latest_data)
     
     except Exception as e:
@@ -130,14 +130,8 @@ def update_last_hot_times():
 
         if temp >= TEMP_THRESHOLD:
             try:
-                if isinstance(ts, str):
-                    timestamp = datetime.fromisoformat(ts).timestamp()
-                elif isinstance(ts, datetime):
-                    timestamp = ts.timestamp()
-                else:
-                    timestamp = float(ts)
-
-                last_hot_time[node] = timestamp
+                
+                last_hot_time[node] = values["timestamp"]
 
             except Exception as e:
                 print(f"Timestamp parse error for {node}: {e}")

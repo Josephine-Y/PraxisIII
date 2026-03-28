@@ -87,7 +87,7 @@ def update_last_hot_times():
     latest_data = get_latest_data() # latest_data[node] = {"temperature": temp, "timestamp": timestamp}
     
     global last_hot_time
-    for node, values in latest_data.items():
+    for node, values in latest_data:
         temp = values["temperature"]
 
         if temp is None:

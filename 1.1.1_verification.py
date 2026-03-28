@@ -98,7 +98,7 @@ else:
     var = sum((t - mean) ** 2 for t in valid_temps) / m
     std = math.sqrt(var)
 
-    print("\n--- 30s Summary ---")
+    print("\n--- 10s Summary ---")
     print(f"samples_collected: {n} (valid: {m})")
     print(f"mean_temp_c: {mean:.2f}")
     print(f"std_temp_c:  {std:.2f}")

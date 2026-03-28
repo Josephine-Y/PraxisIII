@@ -60,7 +60,7 @@ PRINT_INTERVAL_S = 0.5
 # -----------------------------
 # Run test
 # -----------------------------
-print("Starting 30s temperature verification...")
+print("Starting 10s temperature verification...")
 print("time_s,temp_c")
 
 start = time.monotonic()

@@ -1,5 +1,3 @@
-#red 11 (gp16), orange 13 (gnd) yellow 26 3v3
-
 from machine import Pin
 import time
 
@@ -7,12 +5,14 @@ import time
 # USER SETTINGS
 # -----------------------------
 
-HALL_PIN = 16                  # GPIO pin connected to hall sensor output
-PULSES_PER_REV = 2             # Number of valid hall state changes per full rotation
-radius = 0.3                # Radius from shaft center to cup center (meters)
-CALIBRATION_FACTOR = 1.0       # Adjust after testing / calibration
-SAMPLE_TIME = 1.0              # Seconds between wind speed calculations
-DEBOUNCE_MS = 3                # Ignore very fast false triggers
+HALL_PIN = 16
+PULSES_PER_REV = 2
+radius = 0.3
+CALIBRATION_FACTOR = 1.0
+SAMPLE_TIME = 1.0
+DEBOUNCE_MS = 3
+
+TEST_DURATION = 120  # seconds (2 minutes)
 
 # -----------------------------
 # GLOBAL VARIABLES
@@ -38,17 +38,16 @@ def hall_callback(pin):
 # -----------------------------
 
 hall_sensor = Pin(HALL_PIN, Pin.IN, Pin.PULL_UP)
-
-# Count BOTH rising and falling edges.
-# For a latching sensor with alternating N/S poles, each valid state change is useful.
 hall_sensor.irq(trigger=Pin.IRQ_RISING | Pin.IRQ_FALLING, handler=hall_callback)
 
 # -----------------------------
-# MAIN LOOP
+# MAIN TEST LOOP (2 MINUTES)
 # -----------------------------
 
+reading_count = 0
+test_start = time.ticks_ms()
 
-while True:
+while time.ticks_diff(time.ticks_ms(), test_start) < TEST_DURATION * 1000:
     pulse_count = 0
     start_time = time.ticks_ms()
 
@@ -56,17 +55,23 @@ while True:
 
     elapsed_s = time.ticks_diff(time.ticks_ms(), start_time) / 1000
 
-    # Rotations per second
     rev_per_sec = (pulse_count / PULSES_PER_REV) / elapsed_s
-
-    # Tangential speed at radius
     circumference = 2 * 3.14159265359 * radius
     cup_speed_m_s = rev_per_sec * circumference
 
-    # Estimated wind speed
     wind_speed_m_s = cup_speed_m_s * CALIBRATION_FACTOR
     wind_speed_km_h = wind_speed_m_s * 3.6
 
-    print("Pulses:", pulse_count)
-    print("RPS:", round(rev_per_sec, 3))
+    reading_count += 1
+
     print("Wind Speed: {:.2f} m/s | {:.2f} km/h".format(wind_speed_m_s, wind_speed_km_h))
+
+# -----------------------------
+# RESULTS
+# -----------------------------
+
+total_time_s = time.ticks_diff(time.ticks_ms(), test_start) / 1000
+sampling_rate_hz = reading_count / total_time_s
+
+print("Total readings:", reading_count)
+print("Sampling rate: {:.2f} Hz".format(sampling_rate_hz))

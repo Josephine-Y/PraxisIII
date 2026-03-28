@@ -12,6 +12,7 @@ import threading
 import json
 import math
 import numpy as np
+import ssl
 
 load_dotenv()
 
@@ -187,13 +188,16 @@ def on_connect(client, userdata, flags, rc):
 
 def start_mqtt():
     try:
-        client = MQTT.Client(transport="websockets")
+        # client = MQTT.Client(transport="websockets")
+        client = MQTT.Client()
         client.on_connect = on_connect
         client.on_message = on_message
-        # client.username_pw_set(os.getenv("MQTT_USERNAME"), os.getenv("MQTT_PASSWORD"))
-        # client.tls_set() # SSL/TLS encryption
-        client.connect("broker.emqx.io", port=8084)
-        client.loop_forever()   
+
+        client.tls_set(cert_reqs=ssl.CERT_NONE)
+
+        client.connect("broker.emqx.io", port=1883)
+        client.loop_forever()
+
     except Exception as e:
         print(f"MQTT Client Error: {e}")
 

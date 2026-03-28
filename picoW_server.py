@@ -11,15 +11,23 @@ import analogio
 import math
 import wifi
 import socketpool
-import ipaddress
 import ssl
 import adafruit_ntp
 import rtc
 import adafruit_minimqtt.adafruit_minimqtt as MQTT
 import supervisor
+import adafruit_requests
+import select
+import numpy as np
 
-# ---------------------------------------------------
 # Thermistor Functions
+series_resistor = 10000
+nominal_resistance = 10000
+nominal_temp = 25
+beta = 3950
+
+adc = analogio.AnalogIn(board.GP26)
+
 def get_temp(adc_value):
     voltage = adc_value / 65535 * 3.3
     resistance = series_resistor * (voltage / (3.3 - voltage))
@@ -78,9 +86,9 @@ def send_self_data(last_send_time):
         # temp_value = "{:.2f}".format(get_temp_avg(5))
         mqtt_publish("picow14", get_temp_avg(5))
         last_send_time = current_time
-    
     return last_send_time
 
+# Receive UDP Data
 def receive_data(buffer):
     try:
         size, client_address = udp_server.recvfrom_into(buffer)
@@ -175,11 +183,9 @@ if not mqtt_connected:
 buffer = bytearray(1024)
 last_send_time = 0
 
+print("Waiting for data...")
 try:
-    print("Waiting for data...")
     while True:
-        
-       # try:
         last_send_time = send_self_data(last_send_time)
 
         receive_data(buffer)
@@ -195,8 +201,6 @@ try:
                 supervisor.reload()
 
         time.sleep(0.05)
-        #except Exception as e:
-           # print(f"Error: {e}")
 finally:
     udp_server.close()
     try:

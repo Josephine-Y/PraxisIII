@@ -114,7 +114,6 @@ def get_node_location(node):
 # Update last hot times
 def update_last_hot_times():
     global last_hot_time
-
     latest_data = get_latest_data()
     if latest_data.status_code != 200:
         print("Error fetching latest data")
@@ -127,13 +126,11 @@ def update_last_hot_times():
 
         if temp is None or ts is None:
             continue
-
         if temp >= TEMP_THRESHOLD:
-            try:
-                last_hot_time[node] = {"timestamp": ts, "temperature": temp}
-
-            except Exception as e:
-                print(f"Timestamp parse error for {node}: {e}")
+            last_hot_time[node] = {"timestamp": ts, "temperature": temp}
+        else:
+            # Remove node after falling below threshold
+            last_hot_time.pop(node, None)
                 
 # Calculate ROS
 def calculate_ros():

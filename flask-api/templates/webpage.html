@@ -49,6 +49,7 @@
                         const temp = data.temp !== undefined ? data.temp : null;
                         const wind_speed = data.wind_speed !== undefined ? data.wind_speed : null;
                         updateNode(node, temp, wind_speed, data.timestamp);
+                        fetchRateOfSpread();
                         console.log(`Received message on ${topic}: ${message.toString()}`);
                     });
 

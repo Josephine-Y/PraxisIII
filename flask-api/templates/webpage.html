@@ -19,6 +19,11 @@
                 <tr><th>Client IP</th><th>Latest Temperature</th><th>Wind Speed</th><th>Timestamp</th></tr>
                 <tbody id="data-body"></tbody>
             </table>
+
+            <table>
+                <tr><th>Triggered Nodes</th><th>Temperature</th><th>ROS (units/s)</th></tr>
+                <tbody id="ros-body"></tbody>
+            </table>
             
             <script>
                 // const FLASK_URL = "http://localhost:8080";
@@ -88,6 +93,46 @@
                     }
                 }
 
+                async function fetchRateOfSpread() { 
+                    try {
+                        const res = await fetch('/rateofspread');
+                        const json = await res.json();
+                        const tbody = document.getElementById('ros-body');
+                        tbody.innerHTML = '';
+
+                        const ros = json.rate_of_spread.toFixed(2);
+                        const triggeredNodes = json.triggered_nodes;
+
+                        if (triggeredNodes.length === 0) {
+                            const row = document.createElement('tr');
+                            row.innerHTML = `<td colspan="3">No triggered nodes</td>`;
+                            tbody.appendChild(row);
+                            return;
+                        }
+
+                        // Merge the ROS column across all triggered nodes
+                        triggeredNodes.forEach((nodeInfo, index) => {
+                            const row = document.createElement('tr');
+
+                            // First column: node name
+                            const nodeCell = `<td>${nodeInfo.node}</td>`;
+
+                            // Second column: temperature
+                            const tempCell = `<td>${nodeInfo.temperature ?? '--'}</td>`;
+
+                            // Third column: rate of spread (merged for all rows)
+                            const rosCell = index === 0
+                                ? `<td rowspan="${triggeredNodes.length}">${ros}</td>`
+                                : '';
+
+                            row.innerHTML = nodeCell + tempCell + rosCell;
+                            tbody.appendChild(row);
+                        });
+
+                    } catch (err) {
+                        console.error("ROS Fetch Error:", err);
+                    }
+                }
                 startMQTT();
                 fetchData();
             </script>

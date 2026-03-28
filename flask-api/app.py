@@ -130,8 +130,7 @@ def update_last_hot_times():
 
         if temp >= TEMP_THRESHOLD:
             try:
-                
-                last_hot_time[node] = values["timestamp"]
+                last_hot_time[node] = {"timestamp": ts, "temperature": temp}
 
             except Exception as e:
                 print(f"Timestamp parse error for {node}: {e}")
@@ -167,13 +166,24 @@ def calculate_ros():
             t_vec.append(t)
         a, b, c = np.linalg.lstsq(np.array(X), np.array(t_vec), rcond=None)[0]
         ros = 1 / math.sqrt(a**2 + b**2)
-        return ros, len(triggered_nodes)
+
+        return ros, len(triggered_nodes), triggered_nodes
     
 @app.route("/rateofspread", methods=["GET"])
 def get_rate_of_spread():
     update_last_hot_times()
     rate_of_spread, hot_nodes_count = calculate_ros()
-    return jsonify({"rate_of_spread": rate_of_spread, "hot_nodes_count": hot_nodes_count})
+
+    # Include triggered nodes and their latest temperatures
+    triggered_nodes_info = [
+        {"node": node, "temperature": last_hot_time[node]["temperature"]}
+        for node in last_hot_time if isinstance(last_hot_time[node], dict)
+    ]
+    
+    return jsonify({
+        "rate_of_spread": rate_of_spread,
+        "triggered_nodes": triggered_nodes_info
+    })
 
 # MQTT Callback Methods
 @app.route("/mqtt-config")

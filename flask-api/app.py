@@ -1,11 +1,11 @@
 # app.py
 # Flask API subscribed to MQTT --> Database (Supabase)
 
+import encodings.idna
 from flask import Flask, request, jsonify, render_template
 from flask_cors import CORS
 import psycopg2
 from datetime import datetime, timezone
-import os
 from dotenv import load_dotenv
 import paho.mqtt.client as MQTT
 import threading
@@ -13,6 +13,13 @@ import json
 import math
 import numpy as np
 import ssl
+
+import sys
+import os
+
+os.environ["PYTHONIOENCODING"] = "utf-8"
+os.environ["LANG"] = "C.UTF-8"
+os.environ["LC_ALL"] = "C.UTF-8"
 
 load_dotenv()
 

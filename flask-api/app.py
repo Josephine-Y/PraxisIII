@@ -113,25 +113,43 @@ def get_node_location(node):
 
 # Update last hot times
 def update_last_hot_times():
+    global last_hot_time
+
     latest_data = get_latest_data()
     if latest_data.status_code != 200:
         print("Error fetching latest data")
         return
     latest_data = latest_data.get_json()
 
-    global last_hot_time
     for node, values in latest_data.items():
-        temp = values["temperature"]
+        temp = values.get("temperature")
+        ts = values.get("timestamp")
 
-        if temp is None:
+        if temp is None or ts is None:
             continue
-        if temp >= TEMP_THRESHOLD:
-            last_hot_time[node] = values["timestamp"]
 
+        if temp >= TEMP_THRESHOLD:
+            try:
+                if isinstance(ts, str):
+                    timestamp = datetime.fromisoformat(ts).timestamp()
+                elif isinstance(ts, datetime):
+                    timestamp = ts.timestamp()
+                else:
+                    timestamp = float(ts)
+
+                last_hot_time[node] = timestamp
+
+            except Exception as e:
+                print(f"Timestamp parse error for {node}: {e}")
+                
 # Calculate ROS
 def calculate_ros():
     global last_hot_time
-    triggered_nodes = [(node, last_hot_time[node]) for node in last_hot_time if last_hot_time[node] > 0]
+    triggered_nodes = [
+    (node, t)
+    for node, t in last_hot_time.items()
+    if isinstance(t, (int, float)) and t > 0
+    ]
     
     if len(triggered_nodes) < 2:
         return 0.0, len(triggered_nodes)

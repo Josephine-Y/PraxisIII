@@ -44,6 +44,7 @@ def send_to_anemometer(last_send_time):
         for node, values in all_data.items():
             transmission_udp.sendto(values.encode(), (ANEMOMETER_IP, ANEMOMETER_PORT))
             print(f"Sent message: {values} to {ANEMOMETER_IP}:{ANEMOMETER_PORT}")
+        all_data.clear()
         # transmission_udp.sendto(msg.encode(), (ANEMOMETER_IP, ANEMOMETER_PORT))
         # print("Sent:", msg)
         last_send_time = current_time
@@ -59,7 +60,7 @@ def receive_data(buffer):
         
         size, client_address = udp_server.recvfrom_into(buffer)
         data = buffer[:size]
-        print(f"Received message: {data.decode()} from {client_address}")
+        # print(f"Received message: {data.decode()} from {client_address}")
         node = f"picow{client_address[0].split('.')[-1]}"
         temp_value = float(data.decode())
         data = {"node": node, "temp": temp_value}

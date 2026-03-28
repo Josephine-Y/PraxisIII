@@ -163,8 +163,25 @@ def serve(buffer):
             
         request = connection.recv_into(buffer)
         print(f"Received request: {request}")
-        html = generate_page()
-        response = f"HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nConnection: close\r\n\r\n{html}"
+
+        # size = connection.recv_into(memoryview(buffer))
+        # request = buffer[:size].decode()
+
+        # Route based on request
+        if 'GET /data' in request:
+            # Build JSON manually (no json library needed)
+            json_parts = []
+            for ip, data in clients_data.items():
+                json_parts.append(f'"{ip}":"{data}"')
+            json_body = '{' + ','.join(json_parts) + '}'
+            response = f"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n{json_body}"
+        else:
+            # Serve the main page
+            html = generate_page()
+            response = f"HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nConnection: close\r\n\r\n{html}"
+
+        # html = generate_page()
+        # response = f"HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nConnection: close\r\n\r\n{html}"
         connection.send(response.encode())
         connection.close()
         print("Webpage served")

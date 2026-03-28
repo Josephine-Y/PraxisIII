@@ -21,7 +21,7 @@ CORS(app)
 API_KEY = os.getenv("API_KEY")
 
 # Initialize feeds
-FEEDS = ["picow14", "picow141", "picow142", "picow42"]
+FEEDS = ["picow14", "picow141", "picow142", "picow42", "anemometer"]
 
 # latest_cache = {node: {"temperature": None, "timestamp": None} for node in FEEDS}
 
@@ -42,7 +42,7 @@ def get_latest_data():
         connection = get_db()
         cursor = connection.cursor()
         cursor.execute("""
-            SELECT node, temperature, timestamp
+            SELECT node, temperature, wind_speed, timestamp
             FROM data
             WHERE (node, timestamp) IN (
                 SELECT node, MAX(timestamp)
@@ -54,9 +54,9 @@ def get_latest_data():
         cursor.close()
         connection.close()
 
-        latest_data = {node: {"temperature": None, "timestamp": None} for node in FEEDS}
+        latest_data = {node: {"temperature": None, "wind_speed": None, "timestamp": None} for node in FEEDS}
         for row in rows:
-            latest_data[row[0]] = {"temperature": row[1], "timestamp": row[2]}
+            latest_data[row[0]] = {"temperature": row[1], "wind_speed": row[2], "timestamp": row[3]}
         return jsonify(latest_data)
     
     except Exception as e:
@@ -84,8 +84,12 @@ def get_node_location(node):
 
 # Update last hot times
 def update_last_hot_times():
-    latest_data = get_latest_data().get_json() # latest_data[node] = {"temperature": temp, "timestamp": timestamp}
-    
+    latest_data = get_latest_data()
+    if latest_data.status_code != 200:
+        print("Error fetching latest data")
+        return
+    latest_data = latest_data.get_json()
+
     global last_hot_time
     for node, values in latest_data.items():
         temp = values["temperature"]
@@ -130,44 +134,53 @@ def get_rate_of_spread():
     rate_of_spread, hot_nodes_count = calculate_ros()
     return jsonify({"rate_of_spread": rate_of_spread, "hot_nodes_count": hot_nodes_count})
 
-def save_to_db(node, temp, unix_time):
+def save_to_db(node, temp, wind_speed, unix_time):
     # convert unix timestamp to datetime for Supabase
     timestamp = datetime.fromtimestamp(unix_time, tz=timezone.utc)
 
     try:
-        # latest_cache[node] = {"temperature": temp, "timestamp": str(timestamp)}
+        # latest_cache[node] = {"temperature": temp, "wind_speed": wind_speed, "timestamp": str(timestamp)}
 
         connection = get_db()
         cursor = connection.cursor()
         cursor.execute(
-            "INSERT INTO data (node, temperature, timestamp) VALUES (%s, %s, %s)",
-            (node, temp, timestamp)
+            "INSERT INTO data (node, temperature, wind_speed, timestamp) VALUES (%s, %s, %s, %s)",
+            (node, temp, wind_speed, timestamp)
         )
         connection.commit()
         cursor.close()
         connection.close()
-        print(f"Sent to database {node} = {temp}°C, {timestamp}")
+        print(f"Sent to database {node} = {temp}°C, {wind_speed} m/s, {timestamp}")
     
     except Exception as e:
         print(f"Receive Data Error: {e}")
 
 # MQTT Callback Methods
-# app.py
 @app.route("/mqtt-config")
 def mqtt_config():
     return jsonify({
-        "username": os.getenv("MQTT_USERNAME"),
-        "password": os.getenv("MQTT_PASSWORD"),
-        "broker": "wss://339f0d63410548358f66c3cb882ec424.s1.eu.hivemq.cloud:8884/mqtt"
+        # "username": os.getenv("MQTT_USERNAME"),
+        # "password": os.getenv("MQTT_PASSWORD"),
+        # "broker": "wss://339f0d63410548358f66c3cb882ec424.s1.eu.hivemq.cloud:8884/mqtt"
+
+        "username": None,
+        "password": None,
+        "broker": "wss://broker.emqx.io:8084/mqtt"
     })
 
 def on_message(client, userdata, message):
     topic = message.topic # nodes/{node}/jsonify(data)
     node = topic.split("/")[1] # {node}
     data = json.loads(message.payload.decode())
-    temp = data["temp"]
-    unix_time = data["timestamp"]
-    save_to_db(node, temp, unix_time)
+    if node == "anemometer":
+        wind_speed = data.get("wind_speed")
+        temp = None
+    else:
+        temp = data.get("temp")
+        wind_speed = None
+    unix_time = data.get("timestamp")
+
+    save_to_db(node, temp, wind_speed, unix_time)
 
 def on_connect(client, userdata, flags, rc):
     client.subscribe("nodes/+/data")

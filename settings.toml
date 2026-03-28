@@ -13,3 +13,4 @@ MQTT_USERNAME = "mqtt-username"
 MQTT_PASSWORD = "mqtt-password"
 
 SERVER_IP = "172.29.225.14"
+ANEMOMETER_IP = "172.29.225.18"

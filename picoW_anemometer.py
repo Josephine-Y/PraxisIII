@@ -1,30 +1,40 @@
+# picoW_anemometer.py
+# picoW Gateway Node --> Anemometer --> MQTT broker --> Web Dashboard
 #red 11 (gp16), orange 13 (gnd) yellow 26 3v3
 
+# ---------------------------------------------------
 from machine import Pin
 import time
+import network
+import socket
+import json
+from umqtt.simple import MQTTClient
+import config
+import select
 
-# -----------------------------
-# USER SETTINGS
-# -----------------------------
-
-HALL_PIN = 16                  # GPIO pin connected to hall sensor output
-PULSES_PER_REV = 2             # Number of valid hall state changes per full rotation
-radius = 0.3                # Radius from shaft center to cup center (meters)
-CALIBRATION_FACTOR = 1.0       # Adjust after testing / calibration
-SAMPLE_TIME = 1.0              # Seconds between wind speed calculations
-DEBOUNCE_MS = 3                # Ignore very fast false triggers
-
-# -----------------------------
-# GLOBAL VARIABLES
-# -----------------------------
-
+# ---------------------------------------------------
+# Configuration
+MICROPY_WIFI_SSID = config.MICROPY_WIFI_SSID
+MICROPY_WIFI_PASSWORD = config.MICROPY_WIFI_PASSWORD
+MQTT_BROKER = config.MQTT_BROKER
+MQTT_PORT = config.MQTT_PORT
+MQTT_USERNAME = config.MQTT_USERNAME
+MQTT_PASSWORD = config.MQTT_PASSWORD
+# ---------------------------------------------------
+# Anemometer Constants
+HALL_PIN = 16
+PULSES_PER_REV = 2
+radius = 0.3
+CALIBRATION_FACTOR = 1.0
+SAMPLE_TIME = 1.0
+DEBOUNCE_MS = 3
+UDP_PORT = 5000
+# ---------------------------------------------------
+# Global Variables
 pulse_count = 0
 last_trigger_ms = 0
-
-# -----------------------------
+# ---------------------------------------------------
 # INTERRUPT CALLBACK
-# -----------------------------
-
 def hall_callback(pin):
     global pulse_count, last_trigger_ms
 
@@ -32,41 +42,163 @@ def hall_callback(pin):
     if time.ticks_diff(now, last_trigger_ms) > DEBOUNCE_MS:
         pulse_count += 1
         last_trigger_ms = now
-
-# -----------------------------
-# SENSOR SETUP
-# -----------------------------
-
+# ---------------------------------------------------
+# HALL EFFECT SENSOR SETUP
 hall_sensor = Pin(HALL_PIN, Pin.IN, Pin.PULL_UP)
-
-# Count BOTH rising and falling edges.
-# For a latching sensor with alternating N/S poles, each valid state change is useful.
 hall_sensor.irq(trigger=Pin.IRQ_RISING | Pin.IRQ_FALLING, handler=hall_callback)
+# ---------------------------------------------------
+# Wifi Setup
+def connect_wifi():
+    wlan = network.WLAN(network.STA_IF)
+    wlan.active(True)
+    wlan.connect(MICROPY_WIFI_SSID, MICROPY_WIFI_PASSWORD)
 
-# -----------------------------
-# MAIN LOOP
-# -----------------------------
+    print("Connecting to WiFi...")
+    while not wlan.isconnected():
+        time.sleep(1)
 
+    print("Connected to IP:", wlan.ifconfig())
+    return wlan
 
-while True:
+# ---------------------------------------------------
+# MQTT Setup
+def connect_mqtt(retries=5, delay=2):
+    global mqtt
+
+    for attempt in range(retries):
+        try:
+            print("MQTT connecting (attempt", attempt + 1, "/", retries, ")...")
+            client = MQTTClient(
+                client_id="pico_w",
+                server=MQTT_BROKER,
+                port=MQTT_PORT,
+                user=MQTT_USERNAME,
+                password=MQTT_PASSWORD
+            )
+            client.connect()
+            print("MQTT connected")
+            return client
+
+        except Exception as e:
+            print("MQTT Connection Error:", e)
+
+            # try reconnecting WiFi too (very important)
+            if not wlan.isconnected():
+                print("WiFi lost. Reconnecting...")
+                connect_wifi()
+
+            time.sleep(delay)
+
+    print("MQTT failed after retries. Restarting...")
+    time.sleep(2)
+    import machine
+    machine.reset()
+
+def mqtt_publish(topic, payload):
+    global mqtt
+
+    try:
+        mqtt.publish(topic, payload)
+
+    except Exception as e:
+        print("Publish failed:", e)
+
+        # reconnect and retry once
+        mqtt = connect_mqtt()
+        try:
+            mqtt.publish(topic, payload)
+            print("Re-publish success")
+        except Exception as e:
+            print("Re-publish failed:", e)
+
+# ---------------------------------------------------
+# WIND SPEED
+def calculate_wind_speed():
+    global pulse_count
+
     pulse_count = 0
     start_time = time.ticks_ms()
 
-    time.sleep(SAMPLE_TIME)
+    while time.ticks_diff(time.ticks_ms(), start_time) < int(SAMPLE_TIME * 1000):
+        time.sleep_ms(10)
 
-    elapsed_s = time.ticks_diff(time.ticks_ms(), start_time) / 1000
+    elapsed_s = SAMPLE_TIME
 
-    # Rotations per second
     rev_per_sec = (pulse_count / PULSES_PER_REV) / elapsed_s
-
-    # Tangential speed at radius
     circumference = 2 * 3.14159265359 * radius
-    cup_speed_m_s = rev_per_sec * circumference
-
-    # Estimated wind speed
-    wind_speed_m_s = cup_speed_m_s * CALIBRATION_FACTOR
+    wind_speed_m_s = rev_per_sec * circumference * CALIBRATION_FACTOR
     wind_speed_km_h = wind_speed_m_s * 3.6
 
-    print("Pulses:", pulse_count)
-    print("RPS:", round(rev_per_sec, 3))
-    print("Wind Speed: {:.2f} m/s | {:.2f} km/h".format(wind_speed_m_s, wind_speed_km_h))
+    return wind_speed_m_s, wind_speed_km_h
+
+# ---------------------------------------------------
+# UDP Server Setup
+def setup_udp():
+    addr = socket.getaddrinfo("0.0.0.0", UDP_PORT)[0][-1]
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.bind(addr)
+    s.setblocking(False)
+    print("Anemometer server listening on:", wlan.ifconfig()[0], ":", UDP_PORT)
+    return s
+
+# ---------------------------------------------------
+# IoT Functions (MQTT)
+
+def receive_data(sock, buffer, all_data):
+    try:
+        readable, _, _ = select.select([sock], [], [], 0.5)  # 500 ms timeout
+        if not readable:
+            return  
+        
+        data_bytes, addr = sock.recvfrom(buffer)
+        data = json.loads(data_bytes.decode())
+        node = data.get("node")
+        all_data[node] = {
+            "temp": float(data.get("temp")),
+            "timestamp": time.time()
+        }
+        # print("Received:", node, all_data[node])
+    except Exception as e:
+        print("Receive Data Error:", e)
+
+# ---------------------------------------------------
+# Main Setup
+wlan = connect_wifi()
+mqtt = connect_mqtt()
+udp_server = setup_udp()
+
+buffer = 1024
+all_data = {}
+last_publish = time.time()
+
+# ---------------------------------------------------
+# Main
+while True:
+
+    receive_data(udp_server, buffer, all_data)
+
+    # publish every 5 seconds or if enough nodes
+    if (len(all_data) >= 4) or (time.time() - last_publish > 5):
+
+        wind_speed_m_s, wind_speed_km_h = calculate_wind_speed()
+
+        all_data["anemometer"] = {
+            "wind_speed": wind_speed_m_s,
+            "timestamp": time.time()
+        }
+
+        print("Wind Speed: {:.2f} m/s | {:.2f} km/h".format(
+            wind_speed_m_s, wind_speed_km_h))
+
+        for node, values in all_data.items():
+            topic = b"nodes/%s/data" % node.encode()
+            payload = json.dumps(values)
+
+            try:
+                mqtt_publish(topic, payload)
+                print("Published:", node, values)
+            except Exception as e:
+                print("MQTT error:", e)
+                mqtt = connect_mqtt()
+
+        last_publish = time.time()

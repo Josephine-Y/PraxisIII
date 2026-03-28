@@ -7,11 +7,18 @@ Sensor Client --> Sensor Server --> Flask --> Supabase --> Flask --> Render
 
 To make your own sensor network, follow the instructions below:
 
-1. Set up Raspberrry Pi Pico Ws (files in picoW_setup/)
+1. Set up the node network's Raspberry Pi Pico Ws (files in picoW_setup/)
 
    For each Raspberry Pi Pico W...
    
-      a. Hold down the BOOTSEL button and plug in the Raspberry Pi Pico W to your laptop using a micro-USB to USB-A or USB-C cable. File Explorer should pop up,
+      a. Enter Bootloader mode: Hold the BOOTSEL button while connecting the Raspberry Pi Pico W to your laptop using a micro-USB to USB-A or USB-C cable, then release when File Explorer appers as RPI-RP2
    
-      b. Add adafruit-circuitpython-raspberry_pi_pico_w-en_US-10.0.3.uf2 to the Raspberry Pi Pico W's folder (download the .uf2 file from https://circuitpython.org/board/raspberry_pi_pico_w/). The name of the folder/drive connected to the Raspberry Pi Pico W should change to CIRCUITPYTHON.
+      b. Drop adafruit-circuitpython-raspberry_pi_pico_w-en_US-10.0.3.uf2 onto the mounted drive (RPI-RP2) (download the .uf2 file from https://circuitpython.org/board/raspberry_pi_pico_w/). The name of the drive should change to CIRCUITPYTHON.
+
+
+
+2. Set up the anemometer's Raspberry Pi Pico W
+
+   a. Enter Bootloader mode: Hold the BOOTSEL button while connecting the Raspberry Pi Pico W to your laptop using a micro-USB to USB-A or USB-C cable, then release when File Explorer appers as RPI-RP2
    
+   b. Drop RPI_PICO_W-20251209-v1.27.0.uf2 onto the mounted drive (RPI-RP2) (download the .uf2 file from https://micropython.org/download/RPI_PICO_W/). MicroPython does not support File Explorer. Must interact with the board through Thonny or the command-line over the USB connection.

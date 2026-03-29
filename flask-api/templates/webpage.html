@@ -21,7 +21,7 @@
             </table>
 
             <table>
-                <tr><th>Triggered Nodes</th><th>Temperature</th><th>ROS (units/s)</th></tr>
+                <tr><th>Triggered Nodes</th><th>Temperature</th><th>ROS (units/s)</th><th>ROS from Wind Speed (m/s)</th></tr>
                 <tbody id="ros-body"></tbody>
             </table>
             
@@ -104,10 +104,11 @@
 
                         const ros = json.rate_of_spread.toFixed(2);
                         const triggeredNodes = json.triggered_nodes;
+                        const ros_wind = json.ros_wind.toFixed(2);
 
                         if (triggeredNodes.length === 0) {
                             const row = document.createElement('tr');
-                            row.innerHTML = `<td colspan="3">No triggered nodes</td>`;
+                            row.innerHTML = `<td colspan="4">No triggered nodes</td>`;
                             tbody.appendChild(row);
                             return;
                         }
@@ -126,8 +127,13 @@
                             const rosCell = index === 0
                                 ? `<td rowspan="${triggeredNodes.length}">${ros}</td>`
                                 : '';
+                            
+                            // Fourth column: rate of spread from wind speed (merged for all rows)
+                            const windRosCell = index === 0
+                                ? `<td rowspan="${triggeredNodes.length}">${ros_wind}</td>`
+                                : '';
 
-                            row.innerHTML = nodeCell + tempCell + rosCell;
+                            row.innerHTML = nodeCell + tempCell + rosCell + windRosCell;
                             tbody.appendChild(row);
                         });
 

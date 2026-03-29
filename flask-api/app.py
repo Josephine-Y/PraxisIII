@@ -107,7 +107,7 @@ def get_node_location(node):
     elif node == "picow142":
         return (0.0, 1.0)
     elif node == "picow42":
-        return (1.0, 1.0)
+        return (6.0, 6.0)
     else:
         return (0.0, 0.0)
 
@@ -120,6 +120,10 @@ def update_last_hot_times():
         return
     latest_data = latest_data.get_json()
 
+    COOLDOWN_SECONDS = 10 
+
+    now = datetime.now(timezone.utc).timestamp()
+
     for node, values in latest_data.items():
         temp = values.get("temperature")
         ts = values.get("timestamp")
@@ -129,8 +133,13 @@ def update_last_hot_times():
         if temp >= TEMP_THRESHOLD:
             last_hot_time[node] = {"timestamp": ts, "temperature": temp}
         else:
-            # Remove node after falling below threshold
-            last_hot_time.pop(node, None)
+            # Cooldown period after a node falls below threshold before defaulting ros to 0
+            if node in last_hot_time:
+                last_seen = last_hot_time[node]["timestamp"]
+                if now - last_seen > COOLDOWN_SECONDS:
+                    last_hot_time.pop(node, None)
+
+
                 
 # Calculate ROS
 def calculate_ros():
@@ -149,7 +158,7 @@ def calculate_ros():
         x1, y1 = get_node_location(node1)
         x2, y2 = get_node_location(node2)
         d = math.hypot(x2 - x1, y2 - y1)
-        dt = abs(t2 - t1)
+        dt = max(abs(t2 - t1), 0.001)  # avoid zero
         if dt == 0:
             return 0.0, 2, triggered_nodes
         ros = d / dt
@@ -170,6 +179,16 @@ def get_rate_of_spread():
     update_last_hot_times()
     rate_of_spread, hot_nodes_count, triggered_nodes_list = calculate_ros()
 
+    latest_data = get_latest_data()
+    if latest_data.status_code != 200:
+        print("Error fetching latest data")
+        return
+    latest_data = latest_data.get_json()
+    anemometer_data = latest_data.get("anemometer", {})
+    wind_speed = anemometer_data.get("wind_speed")
+
+    ros_wind = wind_speed * 0.1 if isinstance(wind_speed, (int, float)) else 0.0
+
     # Include triggered nodes and their latest temperatures
     triggered_nodes_info = [
         {"node": node, "temperature": last_hot_time[node]["temperature"]}
@@ -178,7 +197,8 @@ def get_rate_of_spread():
     
     return jsonify({
         "rate_of_spread": rate_of_spread,
-        "triggered_nodes": triggered_nodes_info
+        "triggered_nodes": triggered_nodes_info,
+        "ros_wind": ros_wind
     })
 
 # MQTT Callback Methods
